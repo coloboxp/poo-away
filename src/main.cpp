@@ -16,7 +16,7 @@
 static esp_ble_adv_params_t ble_adv_params = {
     .adv_int_min = 0x20,
     .adv_int_max = 0x40,
-    .adv_type = ADV_TYPE_IND,
+    .adv_type = ADV_TYPE_NONCONN_IND,
     .own_addr_type = BLE_ADDR_TYPE_RANDOM,
     .channel_map = ADV_CHNL_ALL,
     .adv_filter_policy = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY};
@@ -24,6 +24,30 @@ static esp_ble_adv_params_t ble_adv_params = {
 uint8_t raw_adv_data[31];
 uint8_t current_mode = 0;
 bool isAdvertising = false;
+
+// Add GAP event handler
+void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
+{
+    switch (event) {
+        case ESP_GAP_BLE_ADV_DATA_RAW_SET_COMPLETE_EVT:
+            esp_ble_gap_start_advertising(&ble_adv_params);
+            break;
+        case ESP_GAP_BLE_ADV_START_COMPLETE_EVT:
+            if (param->adv_start_cmpl.status == ESP_BT_STATUS_SUCCESS) {
+                Serial.println("Advertising started");
+                isAdvertising = true;
+            }
+            break;
+        case ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT:
+            if (param->adv_stop_cmpl.status == ESP_BT_STATUS_SUCCESS) {
+                Serial.println("Advertising stopped");
+                isAdvertising = false;
+            }
+            break;
+        default:
+            break;
+    }
+}
 
 void setRandomMac()
 {
@@ -81,6 +105,9 @@ void setup()
         Serial.println("Bluedroid enable failed");
         return;
     }
+
+    // Register GAP callback
+    esp_ble_gap_register_callback(gap_event_handler);
 }
 
 void loop()
@@ -88,45 +115,39 @@ void loop()
     float sensorValue = analogRead(SENSOR_PIN) * (3.3 / 4095.0);
     Serial.println(sensorValue);
 
-    if (sensorValue > 0.2)
+    if (sensorValue > 0.2 && !isAdvertising)
     {
-        if (!isAdvertising)
-        {
-            setRandomMac();
+        setRandomMac();
 
-            // Create Fast Pair advertising data
-            uint8_t adv_data_len = 0;
-            switch (current_mode)
-            {
-            case 0: // Google Fast Pair
-                // Model ID for Fast Pair (3 bytes)
-                uint32_t modelId = 0x2C8ABC; // Example model ID
-                raw_adv_data[0] = 0x03;      // Length
-                raw_adv_data[1] = 0x03;      // Complete List of 16-bit Service UUIDs
-                raw_adv_data[2] = 0x2C;      // Fast Pair Service UUID (0xFE2C)
-                raw_adv_data[3] = 0xFE;
-                raw_adv_data[4] = 0x06; // Length
-                raw_adv_data[5] = 0x16; // Service Data
-                raw_adv_data[6] = 0x2C; // Fast Pair Service UUID
-                raw_adv_data[7] = 0xFE;
-                raw_adv_data[8] = modelId & 0xFF;          // Model ID (LSB)
-                raw_adv_data[9] = (modelId >> 8) & 0xFF;   // Model ID
-                raw_adv_data[10] = (modelId >> 16) & 0xFF; // Model ID (MSB)
-                adv_data_len = 11;
-                break;
+        // Create Fast Pair advertising data
+        uint8_t adv_data_len = 0;
+        memset(raw_adv_data, 0, sizeof(raw_adv_data));
+        
+        // Google Fast Pair format
+        uint32_t modelId = 0x2C8ABC; // Example model ID
+        
+        // Service Data
+        raw_adv_data[0] = 0x07;      // Length of service data
+        raw_adv_data[1] = 0x16;      // Service Data AD type
+        raw_adv_data[2] = 0x2C;      // Fast Pair Service UUID (0xFE2C)
+        raw_adv_data[3] = 0xFE;
+        raw_adv_data[4] = modelId & 0xFF;          // Model ID (LSB)
+        raw_adv_data[5] = (modelId >> 8) & 0xFF;   
+        raw_adv_data[6] = (modelId >> 16) & 0xFF;  // Model ID (MSB)
+        raw_adv_data[7] = 0x00;      // Salt byte
+        
+        adv_data_len = 8;
 
-                // Add other modes as needed
-            }
-
-            esp_ble_gap_config_adv_data_raw(raw_adv_data, adv_data_len);
-            esp_ble_gap_start_advertising(&ble_adv_params);
-
-            delay(500); // Advertise for 500ms
+        esp_ble_gap_config_adv_data_raw(raw_adv_data, adv_data_len);
+        
+        // Advertising control is now handled by the GAP event handler
+        delay(1000); // Keep advertising for 1 second
+        
+        if (isAdvertising) {
             esp_ble_gap_stop_advertising();
-            isAdvertising = false;
-
-            current_mode = (current_mode + 1) % 1; // Only one mode for now
         }
+        
+        current_mode = (current_mode + 1) % 1;
     }
     delay(100);
 }
