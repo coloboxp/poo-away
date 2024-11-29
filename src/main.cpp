@@ -12,209 +12,40 @@
  */
 
 #include <Arduino.h>
-#include "esp_log.h"
+#include "Sensor.h"
+#include "NotificationManager.h"
 
-const int LED_PIN = 15;
-const int BUZZER_PIN = 16;
-const int PEE_SENSOR_PIN = 4;
-const int POO_SENSOR_PIN = 6;
-const float VCC = 3.3;
-const int ADC_RESOLUTION = 4095;
+// Create sensors
+Sensor peeSensor(4, "\033[33mPEE\033[0m", 0.01, 0.2);
+Sensor pooSensor(6, "\033[38;5;130mPOO\033[0m", 0.01, 0.3);
 
-// Add enum for sensor types
-enum SensorType
-{
-    PEE,         // Pee sensor
-    POO,         // Poo sensor
-    SENSOR_COUNT // Total number of sensors (must be last)
-};
+// Create notification manager
+NotificationManager notificationManager;
 
-struct SensorData
-{
-    const int pin;         // Pin number where the sensor is connected
-    const char *name;      // Name for better messaging
-    const float alpha;     // Response speed
-    const float tolerance; // Sensitivity
-    float baselineEMA;     // Baseline EMA
-    bool firstReading;     // First reading flag
-    float value;           // Sensor value
-};
-
-// Sensor configurations with different sensitivity/response combinations
-// Format: {pin, name, alpha (response speed), tolerance (sensitivity), baseline, firstReading, value}
-SensorData sensors[SENSOR_COUNT] = {
-    // Yellow for pee detection
-    {PEE_SENSOR_PIN, "\033[33mPEE\033[0m", 0.01, 0.2, 0.0, true, 0.0},
-    
-    // Brown for poo detection
-    {POO_SENSOR_PIN, "\033[38;5;130mPOO\033[0m", 0.01, 0.3, 0.0, true, 0.0}
-};
-
-// Add tag for logging
-static const char *TAG = "\033[34mPooAway\033[0m";
-
-/**
- * @brief Setup function to initialize the sensors and pins
- */
-void setup()
-{
-    pinMode(LED_PIN, OUTPUT);
-    pinMode(BUZZER_PIN, OUTPUT);
-    ESP_LOGI(TAG, "Pee&Poo sensor starting up...");
+void setup() {
+    // Add notification devices
+    notificationManager.addDevice(new LED(15));
+    notificationManager.addDevice(new Buzzer(16));
+    notificationManager.addDevice(new BluetoothNotifier());
+    notificationManager.addDevice(new WiFiNotifier("http://your-server.com/api/alerts"));
 }
 
-/**
- * @brief Read the sensor value
- * @param sensor The sensor data struct
- * @return The sensor value
- */
-float readSensor(SensorData &sensor)
-{
-    float sensorValue = analogRead(sensor.pin) * (VCC / ADC_RESOLUTION);
-    return sensorValue;
-}
+void loop() {
+    // Update sensor readings
+    peeSensor.update();
+    pooSensor.update();
 
-/**
- * @brief Update the EMA (Exponential Moving Average) for the sensor
- * @param sensor The sensor data struct
- */
-void updateEMA(SensorData &sensor)
-{
-    // If it's the first reading, set the baseline to the current value
-    if (sensor.firstReading)
-    {
-        sensor.baselineEMA = sensor.value;
-        sensor.firstReading = false;
+    // Check for alerts
+    std::vector<const char*> activeAlerts;
+    if (peeSensor.isAlertTriggered()) {
+        activeAlerts.push_back(peeSensor.getName());
     }
-    else
-    {
-        // Update the EMA using the alpha value
-        sensor.baselineEMA = (sensor.alpha * sensor.value) + ((1 - sensor.alpha) * sensor.baselineEMA);
-    }
-}
-
-/**
- * @brief Check if the sensor value exceeds the threshold
- * @param sensor The sensor data struct
- * @return True if the sensor value exceeds the threshold, false otherwise
- */
-bool checkThreshold(SensorData &sensor)
-{
-    // Calculate the threshold as the baseline EMA plus the tolerance
-    float threshold = sensor.baselineEMA + sensor.tolerance;
-    // Return true if the sensor value exceeds the threshold
-    return sensor.value > threshold;
-}
-
-/**
- * @brief Handle alerts based on sensor values
- * @param alerts Array of boolean flags indicating sensor alerts
- */
-void handleAlerts(const bool alerts[SENSOR_COUNT])
-{
-    bool anyAlert = false;
-    const char *alertTypes[SENSOR_COUNT] = {nullptr};
-    int alertCount = 0;
-
-    for (int i = 0; i < SENSOR_COUNT && i < sizeof(sensors)/sizeof(sensors[0]); i++) {
-        if (alerts[i]) {
-            anyAlert = true;
-            if (alertCount < SENSOR_COUNT) {
-                alertTypes[alertCount++] = sensors[i].name;
-            }
-        }
+    if (pooSensor.isAlertTriggered()) {
+        activeAlerts.push_back(pooSensor.getName());
     }
 
-    if (anyAlert) {
-        // Increase buffer size and add bounds checking
-        char message[128] = "Alert!! ";
-        for (int i = 0; i < alertCount; i++) {
-            if (strlen(message) + strlen(alertTypes[i]) + 2 < sizeof(message)) {
-                strcat(message, alertTypes[i]);
-                strcat(message, " ");
-            }
-        }
-        
-        if (strlen(message) + 10 < sizeof(message)) {
-            strcat(message, "detected!");
-        }
-
-        // Play buzzer with intensity based on number of alerts
-        if (alertCount == 1)
-        {
-            // Single alert - normal warning tone
-            digitalWrite(BUZZER_PIN, HIGH);
-            delay(500);
-            digitalWrite(BUZZER_PIN, LOW);
-            delay(200);
-            digitalWrite(BUZZER_PIN, HIGH);
-            delay(500);
-            digitalWrite(BUZZER_PIN, LOW);
-        }
-        else if (alertCount >= 2)
-        {
-            // Multiple alerts - urgent warning pattern
-            for (int i = 0; i < 4; i++)
-            {
-                digitalWrite(BUZZER_PIN, HIGH);
-                delay(200);
-                digitalWrite(BUZZER_PIN, LOW);
-                delay(100);
-            }
-        }
-
-        ESP_LOGI(TAG, "%s", message);
-        digitalWrite(LED_PIN, HIGH);
-    }
-    else
-    {
-        digitalWrite(LED_PIN, LOW);
-    }
-}
-
-/**
- * @brief Print sensor data
- */
-void printSensorData()
-{
-    char buffer[256] = "Sensors: ";
-    char temp[64];
-    
-    for (int i = 0; i < SENSOR_COUNT; i++)
-    {
-        float threshold = sensors[i].baselineEMA + sensors[i].tolerance;
-        bool isOverThreshold = sensors[i].value > threshold;
-        
-        snprintf(temp, sizeof(temp),
-                 "%s [Val: %s%.3f\033[0m/Th: \033[35m%.3f\033[0m] ",  // Changed threshold to magenta
-                 sensors[i].name,
-                 isOverThreshold ? "\033[31m" : "\033[32m",  // Red if over threshold, Green if under
-                 sensors[i].value,
-                 sensors[i].baselineEMA + sensors[i].tolerance);
-        
-        strcat(buffer, temp);
-    }
-
-    ESP_LOGI(TAG, "%s", buffer);
-}
-
-/**
- * @brief Main loop to read sensor values, update EMA, check thresholds, and handle alerts
- */
-void loop()
-{
-    bool alerts[SENSOR_COUNT];
-
-    // Process all sensors
-    for (int i = 0; i < SENSOR_COUNT; i++)
-    {
-        sensors[i].value = readSensor(sensors[i]);
-        updateEMA(sensors[i]);
-        alerts[i] = checkThreshold(sensors[i]);
-    }
-
-    handleAlerts(alerts);
-    printSensorData();
+    // Handle notifications
+    notificationManager.notify(activeAlerts);
 
     delay(100);
 }
