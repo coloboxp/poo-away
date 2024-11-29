@@ -16,7 +16,7 @@
 
 const int LED_PIN = 15;
 const int BUZZER_PIN = 16;
-const int PEE_SENSOR_PIN = 5;
+const int PEE_SENSOR_PIN = 4;
 const int POO_SENSOR_PIN = 6;
 const float VCC = 3.3;
 const int ADC_RESOLUTION = 4095;
@@ -43,27 +43,15 @@ struct SensorData
 // Sensor configurations with different sensitivity/response combinations
 // Format: {pin, name, alpha (response speed), tolerance (sensitivity), baseline, firstReading, value}
 SensorData sensors[SENSOR_COUNT] = {
-    // Very fast response, low tolerance - Quick alerts but may have false positives
-    //{PEE_SENSOR_PIN, "PEE", 0.1, 0.1, 0.0, true, 0.0},
-
-    // Fast response, medium tolerance - Good balance for pee detection
-    {PEE_SENSOR_PIN, "PEE", 0.01, 0.2, 0.0, true, 0.0},
-
-    // Medium response, high tolerance - More stable, fewer false positives
-    //{PEE_SENSOR_PIN, "PEE", 0.005, 0.3, 0.0, true, 0.0},
-
-    // Slow response, very high tolerance - Most stable but slower alerts
-    //{POO_SENSOR_PIN, "POO", 0.001, 0.4, 0.0, true, 0.0},
-
-    // Medium-fast response, medium tolerance - Balanced detection
-    {POO_SENSOR_PIN, "POO", 0.01, 0.3, 0.0, true, 0.0},
-
-    // Very slow response, extreme tolerance - Minimal false positives
-    //{POO_SENSOR_PIN, "POO", 0.0005, 0.5, 0.0, true, 0.0}
+    // Yellow for pee detection
+    {PEE_SENSOR_PIN, "\033[33mPEE\033[0m", 0.01, 0.2, 0.0, true, 0.0},
+    
+    // Brown for poo detection
+    {POO_SENSOR_PIN, "\033[38;5;130mPOO\033[0m", 0.01, 0.3, 0.0, true, 0.0}
 };
 
 // Add tag for logging
-static const char *TAG = "PooAway";
+static const char *TAG = "\033[34mPooAway\033[0m";
 
 /**
  * @brief Setup function to initialize the sensors and pins
@@ -128,25 +116,28 @@ void handleAlerts(const bool alerts[SENSOR_COUNT])
     const char *alertTypes[SENSOR_COUNT] = {nullptr};
     int alertCount = 0;
 
-    for (int i = 0; i < SENSOR_COUNT; i++)
-    {
-        if (alerts[i])
-        {
+    for (int i = 0; i < SENSOR_COUNT && i < sizeof(sensors)/sizeof(sensors[0]); i++) {
+        if (alerts[i]) {
             anyAlert = true;
-            alertTypes[alertCount++] = sensors[i].name;
+            if (alertCount < SENSOR_COUNT) {
+                alertTypes[alertCount++] = sensors[i].name;
+            }
         }
     }
 
-    if (anyAlert)
-    {
-        // Build alert message
-        char message[64] = "Alert!! ";
-        for (int i = 0; i < alertCount; i++)
-        {
-            strcat(message, alertTypes[i]);
-            strcat(message, " ");
+    if (anyAlert) {
+        // Increase buffer size and add bounds checking
+        char message[128] = "Alert!! ";
+        for (int i = 0; i < alertCount; i++) {
+            if (strlen(message) + strlen(alertTypes[i]) + 2 < sizeof(message)) {
+                strcat(message, alertTypes[i]);
+                strcat(message, " ");
+            }
         }
-        strcat(message, "detected!");
+        
+        if (strlen(message) + 10 < sizeof(message)) {
+            strcat(message, "detected!");
+        }
 
         // Play buzzer with intensity based on number of alerts
         if (alertCount == 1)
@@ -186,18 +177,25 @@ void handleAlerts(const bool alerts[SENSOR_COUNT])
  */
 void printSensorData()
 {
-    char buffer[128];
+    char buffer[256] = "Sensors: ";
+    char temp[64];
+    
     for (int i = 0; i < SENSOR_COUNT; i++)
     {
-        snprintf(buffer, sizeof(buffer),
-                 "%s - Value: %.3f | EMA: %.3f | Threshold: %.3f",
+        float threshold = sensors[i].baselineEMA + sensors[i].tolerance;
+        bool isOverThreshold = sensors[i].value > threshold;
+        
+        snprintf(temp, sizeof(temp),
+                 "%s [Val: %s%.3f\033[0m/Th: \033[35m%.3f\033[0m] ",  // Changed threshold to magenta
                  sensors[i].name,
+                 isOverThreshold ? "\033[31m" : "\033[32m",  // Red if over threshold, Green if under
                  sensors[i].value,
-                 sensors[i].baselineEMA,
                  sensors[i].baselineEMA + sensors[i].tolerance);
-
-        ESP_LOGI(TAG, "%s", buffer);
+        
+        strcat(buffer, temp);
     }
+
+    ESP_LOGI(TAG, "%s", buffer);
 }
 
 /**
