@@ -15,9 +15,9 @@
 #include "esp_log.h"
 
 const int LED_PIN = 15;
-const int BUZZER_PIN = 16;
 const int PEE_SENSOR_PIN = 4;
-const int POO_SENSOR_PIN = 6;
+const int POO_SENSOR_PIN = 5;
+const int BUZZER_PIN = 6;
 const float VCC = 3.3;
 const int ADC_RESOLUTION = 4095;
 
@@ -45,13 +45,15 @@ struct SensorData
 SensorData sensors[SENSOR_COUNT] = {
     // Yellow for pee detection
     {PEE_SENSOR_PIN, "\033[33mPEE\033[0m", 0.01, 0.2, 0.0, true, 0.0},
-    
+
     // Brown for poo detection
-    {POO_SENSOR_PIN, "\033[38;5;130mPOO\033[0m", 0.01, 0.3, 0.0, true, 0.0}
-};
+    {POO_SENSOR_PIN, "\033[38;5;130mPOO\033[0m", 0.01, 0.3, 0.0, true, 0.0}};
 
 // Add tag for logging
 static const char *TAG = "\033[34mPooAway\033[0m";
+
+// Add function declaration before loop()
+void playTone(int frequency, int duration);
 
 /**
  * @brief Setup function to initialize the sensors and pins
@@ -116,59 +118,96 @@ void handleAlerts(const bool alerts[SENSOR_COUNT])
     const char *alertTypes[SENSOR_COUNT] = {nullptr};
     int alertCount = 0;
 
-    for (int i = 0; i < SENSOR_COUNT && i < sizeof(sensors)/sizeof(sensors[0]); i++) {
-        if (alerts[i]) {
+    // Count active alerts
+    for (int i = 0; i < SENSOR_COUNT && i < sizeof(sensors) / sizeof(sensors[0]); i++)
+    {
+        if (alerts[i])
+        {
             anyAlert = true;
-            if (alertCount < SENSOR_COUNT) {
+            if (alertCount < SENSOR_COUNT)
+            {
                 alertTypes[alertCount++] = sensors[i].name;
             }
         }
     }
 
-    if (anyAlert) {
-        // Increase buffer size and add bounds checking
+    if (anyAlert)
+    {
         char message[128] = "Alert!! ";
-        for (int i = 0; i < alertCount; i++) {
-            if (strlen(message) + strlen(alertTypes[i]) + 2 < sizeof(message)) {
+        for (int i = 0; i < alertCount; i++)
+        {
+            if (strlen(message) + strlen(alertTypes[i]) + 2 < sizeof(message))
+            {
                 strcat(message, alertTypes[i]);
                 strcat(message, " ");
             }
         }
-        
-        if (strlen(message) + 10 < sizeof(message)) {
+        if (strlen(message) + 10 < sizeof(message))
+        {
             strcat(message, "detected!");
         }
 
-        // Play buzzer with intensity based on number of alerts
-        if (alertCount == 1)
+        for (int i = 0; i < 2; i++)
         {
-            // Single alert - normal warning tone
-            digitalWrite(BUZZER_PIN, HIGH);
-            delay(500);
-            digitalWrite(BUZZER_PIN, LOW);
-            delay(200);
-            digitalWrite(BUZZER_PIN, HIGH);
-            delay(500);
-            digitalWrite(BUZZER_PIN, LOW);
-        }
-        else if (alertCount >= 2)
-        {
-            // Multiple alerts - urgent warning pattern
-            for (int i = 0; i < 4; i++)
+            // Phase 1: Human Alert - Original intense pattern
+            if (alertCount == 1)
             {
                 digitalWrite(BUZZER_PIN, HIGH);
-                delay(200);
+                delay(500);
                 digitalWrite(BUZZER_PIN, LOW);
-                delay(100);
+                delay(200);
+                digitalWrite(BUZZER_PIN, HIGH);
+                delay(500);
+                digitalWrite(BUZZER_PIN, LOW);
+                delay(200);
+                digitalWrite(BUZZER_PIN, HIGH);
+                delay(500);
+                digitalWrite(BUZZER_PIN, LOW);
+                delay(200);
+                digitalWrite(BUZZER_PIN, HIGH);
+                delay(500);
+                digitalWrite(BUZZER_PIN, LOW);
+                delay(200);
+                digitalWrite(BUZZER_PIN, HIGH);
+                delay(500);
+                digitalWrite(BUZZER_PIN, LOW);
             }
-        }
+            else
+            {
+                for (int j = 0; j < 4; j++)
+                {
+                    digitalWrite(BUZZER_PIN, HIGH);
+                    delay(200);
+                    digitalWrite(BUZZER_PIN, LOW);
+                    delay(100);
+                }
+            }
 
-        ESP_LOGI(TAG, "%s", message);
-        digitalWrite(LED_PIN, HIGH);
+            delay(500); // Pause between phases
+
+            // Phase 2: Pet Deterrent
+            playTone(25000, 2000); // 2 seconds of high-frequency sound
+
+            ESP_LOGI(TAG, "%s", message);
+            digitalWrite(LED_PIN, HIGH);
+        }
     }
-    else
+    digitalWrite(LED_PIN, LOW);
+}
+
+// Add playTone function implementation
+void playTone(int frequency, int duration)
+{
+    int period = 1000000 / frequency; // Period in microseconds
+    int halfPeriod = period / 2;      // Half-period for HIGH/LOW
+    unsigned long endTime = millis() + duration;
+
+    while (millis() < endTime)
     {
-        digitalWrite(LED_PIN, LOW);
+        digitalWrite(BUZZER_PIN, HIGH);
+        delayMicroseconds(halfPeriod);
+        digitalWrite(BUZZER_PIN, LOW);
+        delayMicroseconds(halfPeriod);
     }
 }
 
@@ -179,19 +218,19 @@ void printSensorData()
 {
     char buffer[256] = "Sensors: ";
     char temp[64];
-    
+
     for (int i = 0; i < SENSOR_COUNT; i++)
     {
         float threshold = sensors[i].baselineEMA + sensors[i].tolerance;
         bool isOverThreshold = sensors[i].value > threshold;
-        
+
         snprintf(temp, sizeof(temp),
-                 "%s [Val: %s%.3f\033[0m/Th: \033[35m%.3f\033[0m] ",  // Changed threshold to magenta
+                 "%s [Val: %s%.3f\033[0m/Th: \033[35m%.3f\033[0m] ", // Changed threshold to magenta
                  sensors[i].name,
-                 isOverThreshold ? "\033[31m" : "\033[32m",  // Red if over threshold, Green if under
+                 isOverThreshold ? "\033[31m" : "\033[32m", // Red if over threshold, Green if under
                  sensors[i].value,
                  sensors[i].baselineEMA + sensors[i].tolerance);
-        
+
         strcat(buffer, temp);
     }
 
