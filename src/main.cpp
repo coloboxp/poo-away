@@ -26,9 +26,11 @@ enum SensorType
 {
     PEE,         // Pee sensor
     POO,         // Poo sensor
-    SENSOR_COUNT // Total number of sensors (must be last)
+    SENSOR_COUNT // Total number of sensors (must be last enum value)
 };
 
+// Sensor data structure, to hold the sensor configuration and values.
+// TODO: Handle via BLE
 struct SensorData
 {
     const int pin;         // Pin number where the sensor is connected
@@ -41,21 +43,25 @@ struct SensorData
     bool alertsEnabled;    // Flag to enable/disable alerts
 };
 
-// Modified sensor configurations to include alertsEnabled
+// Sensor configurations
 SensorData sensors[SENSOR_COUNT] = {
+    // Yellow for pee detection (ANSI escape code colors, for terminal)
     {PEE_SENSOR_PIN, "\033[33mPEE\033[0m", 0.01, 0.2, 0.0, true, 0.0, true},
+    // Brown for poo detection (ANSI escape code colors, for terminal)
     {POO_SENSOR_PIN, "\033[38;5;130mPOO\033[0m", 0.01, 0.2, 0.0, true, 0.0, true}};
 
-// Add tag for logging
+// Tag for logging (blue text, ANSI escape code)
 static const char *TAG = "\033[34mPooAway\033[0m";
 
-// Add function declaration before loop()
+// Function declaration before loop()
 void playTone(int frequency, int duration);
 void setSensorAlerts(SensorType sensor, bool enabled);
 
-// Add alert limiting constants and variables
+// Alert limiting constants (5 alerts max, within 5 minutes)
 const unsigned int MAX_ALERTS = 5;
+// Alert cooldown period (5 minutes)
 const unsigned long ALERT_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes in milliseconds
+// Alert counter and last alert time
 unsigned int alertCount = 0;
 unsigned long lastAlertTime = 0;
 
@@ -68,7 +74,7 @@ void setup()
     pinMode(BUZZER_PIN, OUTPUT);
     ESP_LOGI(TAG, "Pee&Poo sensor starting up...");
 
-    setSensorAlerts(POO, false); // Disable alerts for poo sensor
+    setSensorAlerts(POO, false); // Disable alerts for poo sensor until it has been burned in (24 to 168 hours)
 }
 
 /**
@@ -168,33 +174,24 @@ void handleAlerts(const bool alerts[SENSOR_COUNT])
             strcat(message, "detected!");
         }
 
+        // Buzzer phases
         for (int i = 0; i < 2; i++)
         {
-            // Phase 1: Human Alert - Original intense pattern
+            // Phase 1: Human Alert - intense pattern
             if (alertCount == 1)
             {
-                digitalWrite(BUZZER_PIN, HIGH);
-                delay(500);
-                digitalWrite(BUZZER_PIN, LOW);
-                delay(200);
-                digitalWrite(BUZZER_PIN, HIGH);
-                delay(500);
-                digitalWrite(BUZZER_PIN, LOW);
-                delay(200);
-                digitalWrite(BUZZER_PIN, HIGH);
-                delay(500);
-                digitalWrite(BUZZER_PIN, LOW);
-                delay(200);
-                digitalWrite(BUZZER_PIN, HIGH);
-                delay(500);
-                digitalWrite(BUZZER_PIN, LOW);
-                delay(200);
-                digitalWrite(BUZZER_PIN, HIGH);
-                delay(500);
-                digitalWrite(BUZZER_PIN, LOW);
+                // Only one sensor triggered
+                for (int k = 0; k < 5; k++)
+                {
+                    digitalWrite(BUZZER_PIN, HIGH);
+                    delay(500);
+                    digitalWrite(BUZZER_PIN, LOW);
+                    delay(200);
+                }
             }
             else
             {
+                // Two or more sensors triggered, more noise!
                 for (int j = 0; j < 4; j++)
                 {
                     digitalWrite(BUZZER_PIN, HIGH);
@@ -216,7 +213,11 @@ void handleAlerts(const bool alerts[SENSOR_COUNT])
     digitalWrite(LED_PIN, LOW);
 }
 
-// Add playTone function implementation
+/**
+ * @brief Play a tone on the buzzer
+ * @param frequency The frequency of the tone
+ * @param duration The duration of the tone
+ */
 void playTone(int frequency, int duration)
 {
     int period = 1000000 / frequency; // Period in microseconds
@@ -246,7 +247,7 @@ void printSensorData()
         bool isOverThreshold = sensors[i].value > threshold;
 
         snprintf(temp, sizeof(temp),
-                 "%s [Val: %s%.3f\033[0m/Th: \033[35m%.3f\033[0m] ", // Changed threshold to magenta
+                 "%s [Val: %s%.3f\033[0m/Th: \033[35m%.3f\033[0m] ", // Threshold in magenta
                  sensors[i].name,
                  isOverThreshold ? "\033[31m" : "\033[32m", // Red if over threshold, Green if under
                  sensors[i].value,
@@ -279,7 +280,8 @@ void loop()
     delay(100);
 }
 
-// Add function to enable/disable alerts for a sensor
+// Enable/disable alerts for a sensor
+// TODO: Handle via BLE
 void setSensorAlerts(SensorType sensor, bool enabled)
 {
     if (sensor < SENSOR_COUNT)
