@@ -38,22 +38,26 @@ struct SensorData
     float baselineEMA;     // Baseline EMA
     bool firstReading;     // First reading flag
     float value;           // Sensor value
+    bool alertsEnabled;    // Flag to enable/disable alerts
 };
 
-// Sensor configurations with different sensitivity/response combinations
-// Format: {pin, name, alpha (response speed), tolerance (sensitivity), baseline, firstReading, value}
+// Modified sensor configurations to include alertsEnabled
 SensorData sensors[SENSOR_COUNT] = {
-    // Yellow for pee detection
-    {PEE_SENSOR_PIN, "\033[33mPEE\033[0m", 0.01, 0.2, 0.0, true, 0.0},
-
-    // Brown for poo detection
-    {POO_SENSOR_PIN, "\033[38;5;130mPOO\033[0m", 0.01, 0.3, 0.0, true, 0.0}};
+    {PEE_SENSOR_PIN, "\033[33mPEE\033[0m", 0.01, 0.2, 0.0, true, 0.0, true},
+    {POO_SENSOR_PIN, "\033[38;5;130mPOO\033[0m", 0.01, 0.2, 0.0, true, 0.0, true}};
 
 // Add tag for logging
 static const char *TAG = "\033[34mPooAway\033[0m";
 
 // Add function declaration before loop()
 void playTone(int frequency, int duration);
+void setSensorAlerts(SensorType sensor, bool enabled);
+
+// Add alert limiting constants and variables
+const unsigned int MAX_ALERTS = 5;
+const unsigned long ALERT_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes in milliseconds
+unsigned int alertCount = 0;
+unsigned long lastAlertTime = 0;
 
 /**
  * @brief Setup function to initialize the sensors and pins
@@ -63,6 +67,8 @@ void setup()
     pinMode(LED_PIN, OUTPUT);
     pinMode(BUZZER_PIN, OUTPUT);
     ESP_LOGI(TAG, "Pee&Poo sensor starting up...");
+
+    setSensorAlerts(POO, false); // Disable alerts for poo sensor
 }
 
 /**
@@ -114,14 +120,26 @@ bool checkThreshold(SensorData &sensor)
  */
 void handleAlerts(const bool alerts[SENSOR_COUNT])
 {
+    // Check if we're in cooldown period
+    if (alertCount >= MAX_ALERTS && (millis() - lastAlertTime) < ALERT_COOLDOWN_MS)
+    {
+        return;
+    }
+
+    // Reset alert count if cooldown period has passed
+    if (alertCount >= MAX_ALERTS && (millis() - lastAlertTime) >= ALERT_COOLDOWN_MS)
+    {
+        alertCount = 0;
+    }
+
     bool anyAlert = false;
     const char *alertTypes[SENSOR_COUNT] = {nullptr};
     int alertCount = 0;
 
-    // Count active alerts
+    // Count active alerts, but only for enabled sensors
     for (int i = 0; i < SENSOR_COUNT && i < sizeof(sensors) / sizeof(sensors[0]); i++)
     {
-        if (alerts[i])
+        if (alerts[i] && sensors[i].alertsEnabled)
         {
             anyAlert = true;
             if (alertCount < SENSOR_COUNT)
@@ -133,6 +151,9 @@ void handleAlerts(const bool alerts[SENSOR_COUNT])
 
     if (anyAlert)
     {
+        alertCount++;
+        lastAlertTime = millis();
+
         char message[128] = "Alert!! ";
         for (int i = 0; i < alertCount; i++)
         {
@@ -256,4 +277,16 @@ void loop()
     printSensorData();
 
     delay(100);
+}
+
+// Add function to enable/disable alerts for a sensor
+void setSensorAlerts(SensorType sensor, bool enabled)
+{
+    if (sensor < SENSOR_COUNT)
+    {
+        sensors[sensor].alertsEnabled = enabled;
+        ESP_LOGI(TAG, "Alerts for %s sensor: %s",
+                 sensors[sensor].name,
+                 enabled ? "enabled" : "disabled");
+    }
 }
