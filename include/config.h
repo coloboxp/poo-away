@@ -50,3 +50,6 @@ constexpr bool DEBUG_SENSORS = true;
 constexpr unsigned long PRINT_INTERVAL = 1000UL;
 constexpr unsigned long PUBLISH_INTERVAL = 30000UL;
 constexpr unsigned long DEBOUNCE_DELAY = 50UL;
+
+// Alert settings
+constexpr unsigned long ALERT_INTERVAL = 1000; // Alert check interval in milliseconds
