@@ -8,10 +8,9 @@ namespace pooaway::alert
     {
     public:
         void init() override;
-        void handle_alert(const bool alerts[SENSOR_COUNT]) override;
+        void handle_alert(const bool alerts[pooaway::sensors::SENSOR_COUNT]) override;
 
     private:
-        static constexpr char const *TAG = "LedHandler";
         bool m_led_state{false};
     };
 

@@ -1,7 +1,6 @@
 #include "debug_manager.h"
 #include "esp_log.h"
 #include "config.h"
-#include "sensor_manager.h"
 
 DebugManager &DebugManager::instance()
 {
@@ -18,23 +17,13 @@ void DebugManager::init()
 
 void DebugManager::print_sensor_data()
 {
-    const unsigned long now = millis();
-
-    if (now - m_last_print < PRINT_INTERVAL)
+    ESP_LOGI(TAG, "Sensor Data:");
+    for (size_t i = 0; i < pooaway::sensors::SENSOR_COUNT; i++)
     {
-        return;
-    }
-
-    m_last_print = now;
-
-    for (int i = 0; i < SENSOR_COUNT; i++)
-    {
-        const auto &sensor = sensors[i];
-        ESP_LOGI(TAG, "%s: Rs/R0=%.3f (R0=%.1f) Threshold=%.3f %s",
-                 sensor.name,
-                 sensor.value / sensor.cal.r0,
-                 sensor.cal.r0,
-                 sensor.tolerance,
-                 sensor.alertsEnabled ? "ENABLED" : "DISABLED");
+        ESP_LOGI(TAG, "%s: Value=%.2f, Baseline=%.2f, R0=%.2f",
+                 sensors[i].name,
+                 sensors[i].value,
+                 sensors[i].baselineEMA,
+                 sensors[i].cal.r0);
     }
 }

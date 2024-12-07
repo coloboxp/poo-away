@@ -1,14 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include "config.h"
-
-// Sensor types enum
-enum SensorType
-{
-    PEE,         // NH3 sensor
-    POO,         // CH4 sensor
-    SENSOR_COUNT // Total number of sensors
-};
+#include "sensors/sensor_types.h"
 
 // Calibration data structure
 struct SensorCalibration
@@ -38,4 +31,4 @@ struct SensorData
 };
 
 // Sensor initialization data
-extern SensorData sensors[SENSOR_COUNT];
+extern SensorData sensors[pooaway::sensors::SENSOR_COUNT];

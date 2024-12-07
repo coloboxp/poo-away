@@ -1,6 +1,8 @@
 #include "alert_manager.h"
 #include "esp_log.h"
 #include "config.h"
+#include <algorithm>
+#include <Arduino.h>
 
 namespace pooaway::alert
 {
@@ -34,7 +36,7 @@ namespace pooaway::alert
         }
     }
 
-    void AlertManager::update(const bool alerts[SENSOR_COUNT])
+    void AlertManager::update(const bool alerts[pooaway::sensors::SENSOR_COUNT])
     {
         const unsigned long now = millis();
 

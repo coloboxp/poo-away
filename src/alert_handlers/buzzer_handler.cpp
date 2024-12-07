@@ -1,6 +1,7 @@
 #include "alert_handlers/buzzer_handler.h"
 #include "esp_log.h"
 #include "config.h"
+#include <Arduino.h>
 
 namespace pooaway::alert
 {
@@ -12,7 +13,7 @@ namespace pooaway::alert
         m_available = true;
     }
 
-    void BuzzerHandler::handle_alert(const bool alerts[SENSOR_COUNT])
+    void BuzzerHandler::handle_alert(const bool alerts[pooaway::sensors::SENSOR_COUNT])
     {
         if (!m_available)
             return;
@@ -26,7 +27,7 @@ namespace pooaway::alert
 
         m_last_alert = now;
 
-        for (int i = 0; i < SENSOR_COUNT; i++)
+        for (size_t i = 0; i < pooaway::sensors::SENSOR_COUNT; i++)
         {
             if (alerts[i])
             {

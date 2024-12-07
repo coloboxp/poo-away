@@ -8,11 +8,10 @@ namespace pooaway::alert
     {
     public:
         void init() override;
-        void handle_alert(const bool alerts[SENSOR_COUNT]) override;
-        void play_tone(int frequency_hz, int duration_ms);
+        void handle_alert(const bool alerts[pooaway::sensors::SENSOR_COUNT]) override;
 
     private:
-        static constexpr char const *TAG = "BuzzerHandler";
+        void play_tone(int frequency_hz, int duration_ms);
         unsigned long m_last_alert{0};
     };
 

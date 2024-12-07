@@ -1,7 +1,8 @@
 #pragma once
 #include "alert_handler.h"
-#include <PubSubClient.h>
+#include "sensors.h"
 #include <WiFi.h>
+#include <PubSubClient.h>
 
 namespace pooaway::alert
 {
@@ -10,19 +11,19 @@ namespace pooaway::alert
     {
     public:
         MqttHandler();
-        ~MqttHandler() override = default;
-
         void init() override;
-        void handle_alert(const bool alerts[SENSOR_COUNT]) override;
+        void handle_alert(const bool alerts[pooaway::sensors::SENSOR_COUNT]) override;
 
     private:
-        static constexpr char const *TAG = "MqttHandler";
-        WiFiClient m_wifi_client;
-        PubSubClient m_mqtt_client;
         bool connect();
         bool publish_alert(int sensor_index, bool alert_state);
-        unsigned long m_last_reconnect_attempt{0};
-        static constexpr unsigned long RECONNECT_INTERVAL = 5000; // 5 seconds
+
+        WiFiClient m_wifi_client;
+        PubSubClient m_mqtt_client;
+        bool m_mqtt_connected{false};
+        unsigned long m_last_alert{0};
+        static constexpr int MAX_RETRIES = 5;
+        static constexpr int RETRY_DELAY_MS = 1000;
     };
 
 } // namespace pooaway::alert

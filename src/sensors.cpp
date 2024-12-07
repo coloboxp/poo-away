@@ -1,7 +1,7 @@
 #include "sensors.h"
 #include "config.h"
 
-SensorData sensors[SENSOR_COUNT] = {
+SensorData sensors[pooaway::sensors::SENSOR_COUNT] = {
     // NH3 sensor (GM-802B)
     {
         .pin = PEE_SENSOR_PIN,

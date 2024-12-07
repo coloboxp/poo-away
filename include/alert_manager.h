@@ -1,6 +1,6 @@
 #pragma once
 #include <vector>
-#include "sensors.h"
+#include "sensors/sensor_types.h"
 #include "alert_handler.h"
 
 namespace pooaway::alert
@@ -15,7 +15,7 @@ namespace pooaway::alert
         AlertManager &operator=(const AlertManager &) = delete;
 
         void init();
-        void update(const bool alerts[SENSOR_COUNT]);
+        void update(const bool alerts[pooaway::sensors::SENSOR_COUNT]);
         void add_handler(AlertHandler *handler);
         void remove_handler(AlertHandler *handler);
         [[nodiscard]] std::vector<std::string> get_handler_errors() const;
