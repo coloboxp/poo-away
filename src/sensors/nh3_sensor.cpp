@@ -53,7 +53,7 @@ namespace pooaway::sensors
     {
         if (voltage < 0.001F)
         {
-            ESP_LOGW(TAG, "[%s] Voltage too low for Rs calculation: %.3f", m_name, voltage);
+            ESP_LOGV(TAG, "[%s] Voltage too low for Rs calculation: %.3f", m_name, voltage);
             return RL;
         }
         return RL * (VCC - voltage) / voltage;

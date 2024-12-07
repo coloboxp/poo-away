@@ -2,6 +2,7 @@
 #include <string>
 #include <ArduinoJson.h>
 #include "sensors/sensor_types.h"
+#include "wifi_manager.h"
 
 namespace pooaway::alert
 {

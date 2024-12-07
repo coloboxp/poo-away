@@ -12,9 +12,11 @@
 #include "alert_handlers/buzzer_handler.h"
 #include "alert_handlers/led_handler.h"
 #include "alert_handlers/mqtt_handler.h"
+#include "wifi_manager.h"
 
 using namespace pooaway::alert;
 using namespace pooaway::sensors;
+using namespace pooaway;
 
 static constexpr char const *TAG = "Main";
 
@@ -38,6 +40,7 @@ void setup()
 
     // Initialize managers
     SensorManager::instance().init();
+    WiFiManager::instance().init();
     AlertManager::instance().init();
     DebugManager::instance().init();
 
@@ -51,6 +54,7 @@ void setup()
     alert_manager.add_handler(&buzzer_handler);
     alert_manager.add_handler(&led_handler);
     alert_manager.add_handler(&mqtt_handler);
+    alert_manager.add_handler(&api_handler);
 
     // Initial calibration if needed
     if (SensorManager::instance().needs_calibration())

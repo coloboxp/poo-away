@@ -6,7 +6,7 @@ namespace pooaway::sensors
     class NH3Sensor : public BaseSensor
     {
     private:
-        static constexpr float MIN_VALID_VOLTAGE = 0.4F;
+        static constexpr float MIN_VALID_VOLTAGE = 0.0F;
         static constexpr float MAX_VALID_VOLTAGE = 4.0F;
         static constexpr float MIN_VALID_PPM = 0.0F;
         static constexpr float MAX_VALID_PPM = 500.0F;
@@ -24,7 +24,7 @@ namespace pooaway::sensors
 
     public:
         NH3Sensor(int pin)
-            : BaseSensor("MQ137", "PEE", pin,
+            : BaseSensor("GM-802B", "PEE", pin,
                          0.1F,    // alpha (slower response)
                          0.3F,    // tolerance
                          30.0F,   // preheating time (30s)

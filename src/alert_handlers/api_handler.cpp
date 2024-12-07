@@ -45,7 +45,7 @@ namespace pooaway::alert
             m_last_request = now;
         }
 
-        if (WiFi.status() != WL_CONNECTED)
+        if (!WiFiManager::instance().ensure_connected())
         {
             m_last_error = "WiFi connection lost";
             ESP_LOGE(TAG, "%s", m_last_error.c_str());
