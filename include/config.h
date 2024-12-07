@@ -1,6 +1,11 @@
 #pragma once
 
-// Default values if private.h is not present
+// Try to include private configuration if available
+#if __has_include("private.h")
+#include "private.h"
+#endif
+
+// Default values if not defined in private.h
 #ifndef WIFI_SSID
 #define WIFI_SSID "PooAway_Default"
 #endif
