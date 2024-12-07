@@ -8,107 +8,31 @@
 
 #include <Arduino.h>
 #include "esp_log.h"
+#include "sensors.h"
 #include <Preferences.h>
 
+// Try to include private configuration if available
+#if __has_include("private.h")
+#include "private.h"
+#endif
+#include "config.h"
+
+const char *TAG = "PooAway";
+
 Preferences preferences;
-
-// Pin and voltage definitions
-const int LED_PIN = 15;
-const int PEE_SENSOR_PIN = 4; // NH3 sensor
-const int POO_SENSOR_PIN = 5; // CH4 sensor
-const int BUZZER_PIN = 6;
-const float VCC = 5.0;           // Supply voltage
-const int ADC_RESOLUTION = 4095; // 12-bit ADC
-const float RL = 4700.0f;        // Load resistor (4.7kΩ) for both sensors
-
-// Add debug flag
-#define DEBUG_SENSORS true
-
-// Add pin for calibration button
-const int CALIBRATION_BTN_PIN = 7;       // Choose an available GPIO pin
-const int CALIBRATION_LED_PIN = LED_PIN; // Built-in LED to show calibration status
-
-// Sensor types enum
-enum SensorType
-{
-    PEE,         // NH3 sensor
-    POO,         // CH4 sensor
-    SENSOR_COUNT // Total number of sensors
-};
-
-TaskHandle_t calibrationTasks[SensorType::SENSOR_COUNT] = {NULL};
-
-// Calibration data structure
-struct SensorCalibration
-{
-    float r0;                   // Base resistance in clean air
-    const int numReadingsForR0; // Number of readings to establish R0
-    const float preheatingTime; // Time in seconds needed for preheating
-    const float a;              // Exponential coefficient a in: ppm = a * e^(b * rs_r0)
-    const float b;              // Exponential coefficient b
-};
-
-// Sensor data structure
-struct SensorData
-{
-    const int pin;             // ADC pin number
-    const char *model;         // Sensor model
-    const char *name;          // Sensor name for logging
-    const float alpha;         // EMA filter coefficient
-    const float tolerance;     // Threshold for alerts
-    float baselineEMA;         // Baseline for comparison
-    bool firstReading;         // First reading flag
-    float value;               // Current sensor value
-    bool alertsEnabled;        // Alert state
-    SensorCalibration cal;     // Calibration data
-    const int minDetectMs;     // Minimum detection time before alert
-    unsigned long detectStart; // Detection start timestamp
-};
-
-// Initialize sensors
-SensorData sensors[SENSOR_COUNT] = {
-    // NH3 sensor (GM-802B)
-    {
-        .pin = PEE_SENSOR_PIN,
-        .model = "GM-802B",
-        .name = "\033[33mPEE\033[0m",
-        .alpha = 0.01,
-        .tolerance = 0.2,
-        .baselineEMA = 1.0,
-        .firstReading = true,
-        .value = 1.0,
-        .alertsEnabled = true,
-        .cal = {
-            .r0 = 1.0,
-            .numReadingsForR0 = 100,
-            .preheatingTime = 180.0,
-            .a = 10.938, // NH3 specific coefficient
-            .b = 1.7742  // NH3 specific coefficient
-        },
-        .minDetectMs = 5000,
-        .detectStart = 0},
-    // CH4 sensor (GM-402B)
-    {.pin = POO_SENSOR_PIN, .model = "GM-402B", .name = "\033[38;5;130mPOO\033[0m", .alpha = 0.005, .tolerance = 0.3, .baselineEMA = 1.0, .firstReading = true, .value = 1.0, .alertsEnabled = false, .cal = {
-                                                                                                                                                                                                          .r0 = 1.0, .numReadingsForR0 = 100, .preheatingTime = 180.0,
-                                                                                                                                                                                                          .a = 26.572, // CH4 specific coefficient
-                                                                                                                                                                                                          .b = 1.2894  // CH4 specific coefficient
-                                                                                                                                                                                                      },
-     .minDetectMs = 5000,
-     .detectStart = 0}};
-
-static const char *TAG = "\033[34mPooAway\033[0m";
 
 // Function declarations
 void playTone(int frequency, int duration);
 void setSensorAlerts(SensorType sensor, bool enabled);
-void calibrateSensor(SensorData &sensor);
-
+void calibrateSensor(SensorType sensor);
+float calculateRs(float voltage);
 // Task handle array to track calibration tasks
 
 /**
  * @brief Convert sensor reading to PPM
  */
-float convertToPPM(const SensorData &sensor, float rs_r0) {
+float convertToPPM(const SensorData &sensor, float rs_r0)
+{
     // Using the formula: PPM = a * e^(b * rs_r0)
     return sensor.cal.a * exp(sensor.cal.b * rs_r0);
 }
@@ -116,24 +40,26 @@ float convertToPPM(const SensorData &sensor, float rs_r0) {
 /**
  * @brief Read sensor value and calculate Rs/R0 ratio
  */
-float readSensor(SensorData &sensor) {
+float readSensor(SensorData &sensor)
+{
     float adc = analogRead(sensor.pin);
     float vout = adc * (VCC / ADC_RESOLUTION);
-    
+
     // Calculate Rs using voltage divider formula
     float rs = vout > 0.0f ? RL * ((VCC / vout) - 1.0f) : sensor.value;
-    
+
     // Calculate Rs/R0 ratio
     float rs_r0 = sensor.cal.r0 > 0.0f ? rs / sensor.cal.r0 : 1.0f;
-    
+
     // Convert to PPM
     float ppm = convertToPPM(sensor, rs_r0);
-    
-    if (DEBUG_SENSORS) {
+
+    if (DEBUG_SENSORS)
+    {
         ESP_LOGI(TAG, "%s: ADC=%d, Vout=%.3f, Rs=%.3f, Rs/R0=%.3f, PPM=%.1f",
                  sensor.name, (int)adc, vout, rs, rs_r0, ppm);
     }
-    
+
     return ppm;
 }
 
@@ -312,48 +238,64 @@ void calibrationTask(void *pvParameters)
 }
 
 /**
- * @brief Add function to perform clean air calibration
+ * @brief Perform clean air calibration for a specific sensor
+ * @param sensor The sensor to calibrate
  */
+void calibrateSensor(SensorType sensor)
+{
+    ESP_LOGI(TAG, "Calibrating %s sensor in clean air...", sensors[sensor].name);
+
+    if (sensor == PEE)
+    { // NH3 sensor
+        const int SAMPLES = 5;
+        float sum = 0;
+
+        for (int i = 0; i < SAMPLES; i++)
+        {
+            int adc = analogRead(sensors[sensor].pin);
+            float voltage = adc * (3.3 / 4095.0);
+            if (voltage < 0.1)
+            { // Valid clean air reading
+                sum += calculateRs(voltage);
+            }
+            delay(1000);
+        }
+
+        sensors[sensor].value = sum / SAMPLES; // Store in value instead of r0
+    }
+    else if (sensor == POO)
+    { // CH4 sensor
+        ESP_LOGW(TAG, "CH4 sensor may need 24-168 hours burn-in time!");
+        const int SAMPLES = 10;
+        float sum = 0;
+
+        delay(5000); // Extra stabilization time
+
+        for (int i = 0; i < SAMPLES; i++)
+        {
+            int adc = analogRead(sensors[sensor].pin);
+            float voltage = adc * (3.3 / 4095.0);
+            sum += calculateRs(voltage);
+            delay(2000);
+        }
+
+        sensors[sensor].value = sum / SAMPLES; // Store in value instead of r0
+        setSensorAlerts(POO, false);           // Disable alerts during burn-in
+    }
+
+    ESP_LOGI(TAG, "%s new baseline: %.3f",
+             sensors[sensor].name,
+             sensors[sensor].value);
+}
+
 void performCleanAirCalibration()
 {
     ESP_LOGI(TAG, "Starting clean air calibration...");
-    digitalWrite(CALIBRATION_LED_PIN, HIGH);
 
-    // Take multiple readings for each sensor
-    for (int i = 0; i < SENSOR_COUNT; i++)
-    {
-        float sum = 0;
-        int validReadings = 0;
+    // Calibrate each sensor with its specific requirements
+    calibrateSensor(PEE);
+    calibrateSensor(POO);
 
-        ESP_LOGI(TAG, "Calibrating %s sensor in clean air...", sensors[i].name);
-
-        // Take 100 readings over 10 seconds
-        for (int j = 0; j < 100; j++)
-        {
-            float vout = analogRead(sensors[i].pin) * (VCC / ADC_RESOLUTION);
-            float rs = vout > 0.0f ? RL * ((VCC / vout) - 1.0f) : 0.0f;
-
-            if (rs > 0.0f)
-            {
-                sum += rs;
-                validReadings++;
-            }
-            delay(100); // 100ms between readings
-        }
-
-        if (validReadings > 0)
-        {
-            // Store new R0 value
-            sensors[i].cal.r0 = sum / validReadings;
-            ESP_LOGI(TAG, "%s new R0: %.3f", sensors[i].name, sensors[i].cal.r0);
-
-            // Reset baseline EMA
-            sensors[i].baselineEMA = 1.0f;
-            sensors[i].firstReading = true;
-        }
-    }
-
-    digitalWrite(CALIBRATION_LED_PIN, LOW);
     ESP_LOGI(TAG, "Clean air calibration complete!");
 }
 
@@ -374,20 +316,22 @@ void setup()
     pinMode(LED_PIN, OUTPUT);
     pinMode(BUZZER_PIN, OUTPUT);
     pinMode(CALIBRATION_LED_PIN, OUTPUT);
-    
+
     // Initialize button with pullup and wait for stabilization
     pinMode(CALIBRATION_BTN_PIN, INPUT_PULLUP);
     delay(100);
-    
+
     // Read and verify button state multiple times
     bool buttonState = HIGH;
-    for(int i = 0; i < 5; i++) {
+    for (int i = 0; i < 5; i++)
+    {
         buttonState &= digitalRead(CALIBRATION_BTN_PIN);
         delay(10);
     }
     ESP_LOGI(TAG, "Initial button state: %s", buttonState ? "HIGH" : "LOW");
-    
-    if (!buttonState) {
+
+    if (!buttonState)
+    {
         ESP_LOGW(TAG, "Warning: Button reading as LOW at startup - check wiring!");
     }
 
@@ -416,32 +360,38 @@ void loop()
     bool alerts[SENSOR_COUNT];
 
     // First loop initialization
-    if (firstLoop) {
+    if (firstLoop)
+    {
         ESP_LOGI(TAG, "=== First Loop ===");
         firstLoop = false;
         lastButtonState = digitalRead(CALIBRATION_BTN_PIN);
         lastButtonCheck = millis();
         ESP_LOGI(TAG, "Button state initialized to: %s", lastButtonState ? "HIGH" : "LOW");
-        if (!lastButtonState) {
+        if (!lastButtonState)
+        {
             ESP_LOGW(TAG, "Warning: Button still LOW - possible wiring issue");
         }
         return;
     }
 
     // Button handling with extra validation
-    if (millis() - lastButtonCheck >= DEBOUNCE_DELAY) {
+    if (millis() - lastButtonCheck >= DEBOUNCE_DELAY)
+    {
         bool currentButtonState = digitalRead(CALIBRATION_BTN_PIN);
-        
+
         // Only process state changes
-        if (currentButtonState != lastButtonState) {
+        if (currentButtonState != lastButtonState)
+        {
             lastButtonCheck = millis();
-            
+
             // Extra debounce check
             delay(10);
-            if (digitalRead(CALIBRATION_BTN_PIN) == currentButtonState) {
+            if (digitalRead(CALIBRATION_BTN_PIN) == currentButtonState)
+            {
                 lastButtonState = currentButtonState;
-                
-                if (currentButtonState == LOW && !buttonPressed) {
+
+                if (currentButtonState == LOW && !buttonPressed)
+                {
                     ESP_LOGI(TAG, "=== Button Press Detected ===");
                     buttonPressed = true;
                     ESP_LOGI(TAG, "Starting manual calibration...");
@@ -452,8 +402,9 @@ void loop()
                 }
             }
         }
-        
-        if (currentButtonState == HIGH) {
+
+        if (currentButtonState == HIGH)
+        {
             buttonPressed = false;
         }
     }
@@ -474,6 +425,14 @@ void loop()
         lastPrint = millis();
     }
 
+    static unsigned long lastPublish = 0;
+    if (millis() - lastPublish > 30000)
+    {
+        // Publish PEE sensor data
+
+        lastPublish = millis();
+    }
+
     delay(100);
 }
 
@@ -489,4 +448,11 @@ void setSensorAlerts(SensorType sensor, bool enabled)
                  sensors[sensor].name,
                  enabled ? "enabled" : "disabled");
     }
+}
+
+float calculateRs(float voltage)
+{
+    if (voltage < 0.001f)
+        voltage = 0.001f; // Prevent division by zero
+    return RL * ((VCC / voltage) - 1.0f);
 }
