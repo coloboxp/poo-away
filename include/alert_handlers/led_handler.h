@@ -8,7 +8,7 @@ namespace pooaway::alert
     {
     public:
         void init() override;
-        void handle_alert(const bool alerts[pooaway::sensors::SENSOR_COUNT]) override;
+        void handle_alert(JsonDocument &alert_data) override;
 
     private:
         bool m_led_state{false};

@@ -12,7 +12,7 @@ namespace pooaway::alert
     public:
         MqttHandler();
         void init() override;
-        void handle_alert(const bool alerts[pooaway::sensors::SENSOR_COUNT]) override;
+        void handle_alert(JsonDocument &alert_data) override;
 
     private:
         bool connect();

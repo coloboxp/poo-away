@@ -13,15 +13,17 @@ namespace pooaway::alert
         m_available = true;
     }
 
-    void LedHandler::handle_alert(const bool alerts[pooaway::sensors::SENSOR_COUNT])
+    void LedHandler::handle_alert(JsonDocument &alert_data)
     {
         if (!m_available)
             return;
 
         bool any_alert = false;
-        for (size_t i = 0; i < pooaway::sensors::SENSOR_COUNT; i++)
+        JsonArray sensors = alert_data["sensors"].as<JsonArray>();
+
+        for (const JsonObject &sensor : sensors)
         {
-            if (alerts[i])
+            if (sensor["alert"].as<bool>())
             {
                 any_alert = true;
                 break;

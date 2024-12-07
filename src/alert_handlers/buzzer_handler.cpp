@@ -13,7 +13,7 @@ namespace pooaway::alert
         m_available = true;
     }
 
-    void BuzzerHandler::handle_alert(const bool alerts[pooaway::sensors::SENSOR_COUNT])
+    void BuzzerHandler::handle_alert(JsonDocument &alert_data)
     {
         if (!m_available)
             return;
@@ -25,13 +25,15 @@ namespace pooaway::alert
             return;
         }
 
-        m_last_alert = now;
-
-        for (size_t i = 0; i < pooaway::sensors::SENSOR_COUNT; i++)
+        JsonArray sensors = alert_data["sensors"].as<JsonArray>();
+        for (const JsonObject &sensor : sensors)
         {
-            if (alerts[i])
+            if (sensor["alert"].as<bool>())
             {
-                play_tone(1000 + (i * 500), 100);
+                int base_freq = 1000;
+                int freq_offset = sensor["index"].as<int>() * 500;
+                play_tone(base_freq + freq_offset, 100);
+                m_last_alert = now;
                 return;
             }
         }

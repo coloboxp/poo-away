@@ -30,6 +30,26 @@
 #define MQTT_FEED_PREFIX "pooaway"
 #endif
 
+#ifndef AIO_USERNAME
+#define AIO_USERNAME "usernamehere"
+#endif
+
+#ifndef MQTT_BROKER
+#define MQTT_BROKER "mqtt.example.com"
+#endif
+
+#ifndef MQTT_PORT
+#define MQTT_PORT 1883
+#endif
+
+#ifndef AIO_KEY
+#define AIO_KEY "tokenhere"
+#endif
+
+#ifndef API_PATH
+#define API_PATH "https://io.adafruit.com/api/v2/usernamehere/groups/groupnamehere"
+#endif
+
 // Pin definitions
 constexpr int LED_PIN = 15;
 constexpr int PEE_SENSOR_PIN = 4; // NH3 sensor
@@ -51,30 +71,10 @@ constexpr unsigned long PRINT_INTERVAL = 1000UL;
 constexpr unsigned long PUBLISH_INTERVAL = 30000UL;
 constexpr unsigned long DEBOUNCE_DELAY = 50UL;
 
+constexpr char const *API_ENDPOINT = API_PATH;
+constexpr int API_TIMEOUT = 5000; // milliseconds
+
 // Alert settings
 constexpr unsigned long ALERT_INTERVAL = 1000; // Alert check interval in milliseconds
 
 // MQTT Configuration
-#ifndef MQTT_BROKER
-#define MQTT_BROKER "mqtt.example.com"
-#endif
-
-#ifndef MQTT_PORT
-#define MQTT_PORT 1883
-#endif
-
-#ifndef MQTT_USERNAME
-#define MQTT_USERNAME "default_user"
-#endif
-
-#ifndef MQTT_PASSWORD
-#define MQTT_PASSWORD "default_pass"
-#endif
-
-#ifndef MQTT_CLIENT_ID
-#define MQTT_CLIENT_ID "pooaway_device"
-#endif
-
-#ifndef MQTT_FEED_PREFIX
-#define MQTT_FEED_PREFIX "pooaway"
-#endif

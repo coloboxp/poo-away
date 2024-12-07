@@ -1,8 +1,11 @@
 #include "alert_manager.h"
 #include "esp_log.h"
 #include "config.h"
+#include "sensors.h"
 #include <algorithm>
 #include <Arduino.h>
+#include <ArduinoJson.h>
+#include <WiFi.h>
 
 namespace pooaway::alert
 {
@@ -47,13 +50,41 @@ namespace pooaway::alert
 
         m_last_alert = now;
 
+        JsonDocument doc;
+        doc["device_id"] = WiFi.macAddress();
+        doc["timestamp"] = now;
+
+        auto sensors_array = doc["sensors"].to<JsonArray>();
+
+        for (size_t i = 0; i < pooaway::sensors::SENSOR_COUNT; i++)
+        {
+            if (alerts[i])
+            {
+                auto sensor = sensors_array.add<JsonObject>();
+                sensor["index"] = i;
+                sensor["name"] = ::sensors[i].name;
+                sensor["model"] = ::sensors[i].model;
+                sensor["alert"] = alerts[i];
+
+                auto readings = sensor["readings"].to<JsonObject>();
+                readings["value"] = ::sensors[i].value;
+                readings["baseline"] = ::sensors[i].baselineEMA;
+                readings["r0"] = ::sensors[i].cal.r0;
+
+                auto calibration = sensor["calibration"].to<JsonObject>();
+                calibration["preheating_time"] = ::sensors[i].cal.preheatingTime;
+                calibration["a"] = ::sensors[i].cal.a;
+                calibration["b"] = ::sensors[i].cal.b;
+            }
+        }
+
         for (auto handler : m_handlers)
         {
             try
             {
                 if (handler->is_available())
                 {
-                    handler->handle_alert(alerts);
+                    handler->handle_alert(doc);
                 }
             }
             catch (const std::exception &e)
