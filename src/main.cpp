@@ -8,6 +8,9 @@
 #include "alert_manager.h"
 #include "debug_manager.h"
 #include "config.h"
+#include "alert_handlers/buzzer_handler.h"
+#include "alert_handlers/led_handler.h"
+#include "alert_handlers/mqtt_handler.h"
 
 static constexpr char const *TAG = "Main";
 
@@ -26,6 +29,19 @@ void setup()
     pinMode(LED_PIN, OUTPUT);
     pinMode(BUZZER_PIN, OUTPUT);
     pinMode(CALIBRATION_BTN_PIN, INPUT_PULLUP);
+
+    // Initialize alert handlers
+    auto &alert_manager = AlertManager::instance();
+
+    static BuzzerHandler buzzer_handler;
+    static LedHandler led_handler;
+    static MqttHandler mqtt_handler;
+
+    alert_manager.add_handler(&buzzer_handler);
+    alert_manager.add_handler(&led_handler);
+    alert_manager.add_handler(&mqtt_handler);
+
+    alert_manager.init();
 
     // Initial calibration if needed
     if (SensorManager::instance().needs_calibration())

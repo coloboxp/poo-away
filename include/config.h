@@ -53,3 +53,28 @@ constexpr unsigned long DEBOUNCE_DELAY = 50UL;
 
 // Alert settings
 constexpr unsigned long ALERT_INTERVAL = 1000; // Alert check interval in milliseconds
+
+// MQTT Configuration
+#ifndef MQTT_BROKER
+#define MQTT_BROKER "mqtt.example.com"
+#endif
+
+#ifndef MQTT_PORT
+#define MQTT_PORT 1883
+#endif
+
+#ifndef MQTT_USERNAME
+#define MQTT_USERNAME "default_user"
+#endif
+
+#ifndef MQTT_PASSWORD
+#define MQTT_PASSWORD "default_pass"
+#endif
+
+#ifndef MQTT_CLIENT_ID
+#define MQTT_CLIENT_ID "pooaway_device"
+#endif
+
+#ifndef MQTT_FEED_PREFIX
+#define MQTT_FEED_PREFIX "pooaway"
+#endif

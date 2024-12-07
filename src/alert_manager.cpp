@@ -13,8 +13,10 @@ AlertManager::AlertManager() = default;
 void AlertManager::init()
 {
     ESP_LOGI(TAG, "Initializing alert manager");
-    pinMode(BUZZER_PIN, OUTPUT);
-    pinMode(LED_PIN, OUTPUT);
+    for (auto handler : m_handlers)
+    {
+        handler->init();
+    }
 }
 
 void AlertManager::update(const bool alerts[SENSOR_COUNT])
@@ -28,19 +30,23 @@ void AlertManager::update(const bool alerts[SENSOR_COUNT])
 
     m_last_alert = now;
 
-    for (int i = 0; i < SENSOR_COUNT; i++)
+    for (auto handler : m_handlers)
     {
-        if (alerts[i])
-        {
-            play_tone(1000 + (i * 500), 100);
-            digitalWrite(LED_PIN, !digitalRead(LED_PIN));
-            return;
-        }
+        handler->handle_alert(alerts);
     }
-    digitalWrite(LED_PIN, LOW);
 }
 
-void AlertManager::play_tone(int frequency_hz, int duration_ms)
+void AlertManager::add_handler(AlertHandler *handler)
 {
-    tone(BUZZER_PIN, frequency_hz, duration_ms);
+    m_handlers.push_back(handler);
+    handler->init();
+}
+
+void AlertManager::remove_handler(AlertHandler *handler)
+{
+    auto it = std::find(m_handlers.begin(), m_handlers.end(), handler);
+    if (it != m_handlers.end())
+    {
+        m_handlers.erase(it);
+    }
 }
