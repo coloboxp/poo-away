@@ -5,6 +5,7 @@
 #include "sensors/base_sensor.h"
 #include "sensors/nh3_sensor.h"
 #include "sensors/ch4_sensor.h"
+#include "sensors/sensor_types.h"
 
 namespace pooaway::sensors
 {
@@ -12,9 +13,9 @@ namespace pooaway::sensors
     {
     private:
         static constexpr char const *TAG = "SensorManager";
-        static constexpr size_t MAX_SENSORS = static_cast<size_t>(SensorType::SENSOR_COUNT);
+        static constexpr size_t MAX_SENSORS = SENSOR_COUNT;
 
-        std::array<BaseSensor *, MAX_SENSORS> m_sensors;
+        std::array<BaseSensor *, MAX_SENSORS> m_sensors{};
         std::unique_ptr<NH3Sensor> m_nh3_sensor;
         std::unique_ptr<CH4Sensor> m_ch4_sensor;
         Preferences m_preferences;
@@ -38,5 +39,4 @@ namespace pooaway::sensors
         SensorManager(const SensorManager &) = delete;
         SensorManager &operator=(const SensorManager &) = delete;
     };
-
 } // namespace pooaway::sensors

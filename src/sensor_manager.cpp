@@ -27,6 +27,9 @@ namespace pooaway::sensors
 
         for (auto *sensor : m_sensors)
         {
+            if (sensor == nullptr)
+                continue;
+
             sensor->init();
 
             // Load calibration from preferences if available
@@ -35,6 +38,7 @@ namespace pooaway::sensors
             {
                 ESP_LOGI(TAG, "Loaded calibration for %s: R0=%.1f",
                          sensor->get_name(), saved_r0);
+                sensor->set_r0(saved_r0);
             }
             else
             {
@@ -47,7 +51,10 @@ namespace pooaway::sensors
     {
         for (auto *sensor : m_sensors)
         {
-            sensor->read();
+            if (sensor != nullptr)
+            {
+                sensor->read();
+            }
         }
     }
 
@@ -57,6 +64,9 @@ namespace pooaway::sensors
 
         for (auto *sensor : m_sensors)
         {
+            if (sensor == nullptr)
+                continue;
+
             sensor->calibrate();
 
             // Save calibration to preferences
@@ -90,16 +100,14 @@ namespace pooaway::sensors
 
         for (auto *sensor : m_sensors)
         {
-            sensor->run_self_test();
-            const auto &diag = sensor->get_diagnostics();
+            if (sensor == nullptr)
+                continue;
 
-            ESP_LOGI(TAG, "Sensor %s diagnostics:", sensor->get_name());
-            ESP_LOGI(TAG, "  Health: %s", diag.is_healthy ? "OK" : "FAIL");
-            ESP_LOGI(TAG, "  Readings: %lu (Errors: %lu)",
-                     diag.read_count, diag.error_count);
-            ESP_LOGI(TAG, "  Values - Min: %.2f, Max: %.2f, Avg: %.2f",
-                     diag.min_value, diag.max_value, diag.avg_value);
-            ESP_LOGI(TAG, "  Active time: %lu ms", diag.total_active_time);
+            const float value = sensor->get_value();
+            const float r0 = sensor->get_r0();
+
+            ESP_LOGI(TAG, "[%s] Value: %.2f, R0: %.1f",
+                     sensor->get_name(), value, r0);
         }
     }
 

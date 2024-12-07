@@ -95,9 +95,9 @@ void loop()
     sensor_manager.update();
 
     // Check for alerts
-    for (size_t i = 0; i < 2; i++)
+    for (size_t i = 0; i < SENSOR_COUNT; i++)
     {
-        const auto sensor_type = static_cast<pooaway::sensors::SensorType>(i);
+        const auto sensor_type = static_cast<SensorType>(i);
         alerts[i] = sensor_manager.get_alert_status(sensor_type);
 
         if (alerts[i])
