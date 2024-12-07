@@ -21,10 +21,10 @@ using namespace pooaway;
 static constexpr char const *TAG = "Main";
 
 // Initialize alert handlers with rate limits
-static ApiHandler api_handler(API_RATE_LIMIT_MS);
-static MqttHandler mqtt_handler(MQTT_RATE_LIMIT_MS);
-static LedHandler led_handler(LED_RATE_LIMIT_MS);
-static BuzzerHandler buzzer_handler(BUZZER_RATE_LIMIT_MS);
+static ApiHandler api_handler(config::alerts::API_RATE_LIMIT_MS);
+static MqttHandler mqtt_handler(config::alerts::MQTT_RATE_LIMIT_MS);
+static LedHandler led_handler(config::alerts::LED_RATE_LIMIT_MS);
+static BuzzerHandler buzzer_handler(config::alerts::BUZZER_RATE_LIMIT_MS);
 
 void setup()
 {
@@ -33,10 +33,10 @@ void setup()
     ESP_LOGI(TAG, "Starting PooAway sensor system...");
 
     // Initialize GPIO pins
-    pinMode(LED_PIN, OUTPUT);
-    pinMode(BUZZER_PIN, OUTPUT);
-    pinMode(CALIBRATION_BTN_PIN, INPUT_PULLUP);
-    pinMode(CALIBRATION_LED_PIN, OUTPUT);
+    pinMode(config::hardware::LED_PIN, OUTPUT);
+    pinMode(config::hardware::BUZZER_PIN, OUTPUT);
+    pinMode(config::hardware::CALIBRATION_BTN_PIN, INPUT_PULLUP);
+    pinMode(config::hardware::CALIBRATION_LED_PIN, OUTPUT);
 
     // Initialize managers
     SensorManager::instance().init();
@@ -78,13 +78,13 @@ void loop()
     static unsigned long last_debounce = 0;
 
     // Handle calibration button
-    const bool current_btn_state = digitalRead(CALIBRATION_BTN_PIN);
+    const bool current_btn_state = digitalRead(config::hardware::CALIBRATION_BTN_PIN);
     if (current_btn_state != last_btn_state)
     {
         last_debounce = millis();
     }
 
-    if ((millis() - last_debounce) > DEBOUNCE_DELAY)
+    if ((millis() - last_debounce) > config::input::DEBOUNCE_DELAY)
     {
         if (current_btn_state == LOW)
         { // Button pressed (active LOW)

@@ -12,7 +12,7 @@ namespace pooaway::alert
     void LedHandler::init()
     {
         ESP_LOGI(TAG, "Initializing LED handler");
-        pinMode(LED_PIN, OUTPUT);
+        pinMode(config::hardware::LED_PIN, OUTPUT);
         m_available = true;
         if (m_rate_limit_ms > 0)
         {
@@ -51,11 +51,11 @@ namespace pooaway::alert
         if (any_alert)
         {
             m_led_state = !m_led_state;
-            digitalWrite(LED_PIN, m_led_state);
+            digitalWrite(config::hardware::LED_PIN, m_led_state);
         }
         else
         {
-            digitalWrite(LED_PIN, LOW);
+            digitalWrite(config::hardware::LED_PIN, LOW);
         }
     }
 

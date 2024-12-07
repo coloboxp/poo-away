@@ -67,7 +67,7 @@ namespace pooaway::alert
         for (JsonObject sensor : sensors)
         {
             ESP_LOGD(TAG, "Sensor %s: value=%.2f, baseline=%.2f, alert=%d",
-                     sensor["name"].as<const char*>(),
+                     sensor["name"].as<const char *>(),
                      sensor["readings"]["value"].as<float>(),
                      sensor["readings"]["baseline"].as<float>(),
                      sensor["alert"].as<bool>());
@@ -75,24 +75,24 @@ namespace pooaway::alert
 
         for (JsonObject sensor : sensors)
         {
-            String sensor_name = sensor["name"].as<const char*>();
+            String sensor_name = sensor["name"].as<const char *>();
             sensor_name.toLowerCase(); // Convert to lowercase for consistent naming
-            
+
             const auto readings = sensor["readings"].as<JsonObject>();
-            
+
             // Add all sensor readings
-            const std::pair<const char*, float> values[] = {
-                {"", readings["value"].as<float>()},                    // Main value
-                {".baseline", readings["baseline"].as<float>()},        // Baseline
-                {".voltage", readings["voltage"].as<float>()},          // Voltage
-                {".rs", readings["rs"].as<float>()},                   // Rs value
-                {".r0", readings["r0"].as<float>()},                   // R0 value
-                {".ratio", readings["ratio"].as<float>()},             // Ratio
-                {".alert", sensor["alert"].as<bool>()}                 // Alert status
+            const std::pair<const char *, float> values[] = {
+                {"", readings["value"].as<float>()},             // Main value
+                {".baseline", readings["baseline"].as<float>()}, // Baseline
+                {".voltage", readings["voltage"].as<float>()},   // Voltage
+                {".rs", readings["rs"].as<float>()},             // Rs value
+                {".r0", readings["r0"].as<float>()},             // R0 value
+                {".ratio", readings["ratio"].as<float>()},       // Ratio
+                {".alert", sensor["alert"].as<bool>()}           // Alert status
             };
 
             // Add each reading type to the feeds
-            for (const auto& [suffix, value] : values)
+            for (const auto &[suffix, value] : values)
             {
                 auto feed = feeds.add<JsonObject>();
                 feed["key"] = String("pooaway.") + sensor_name + suffix;
@@ -101,12 +101,11 @@ namespace pooaway::alert
 
             // Add calibration data
             const auto cal = sensor["calibration"].as<JsonObject>();
-            const std::pair<const char*, float> cal_values[] = {
+            const std::pair<const char *, float> cal_values[] = {
                 {".cal_a", cal["a"].as<float>()},
-                {".cal_b", cal["b"].as<float>()}
-            };
+                {".cal_b", cal["b"].as<float>()}};
 
-            for (const auto& [suffix, value] : cal_values)
+            for (const auto &[suffix, value] : cal_values)
             {
                 auto feed = feeds.add<JsonObject>();
                 feed["key"] = String("pooaway.") + sensor_name + suffix;
@@ -130,10 +129,10 @@ namespace pooaway::alert
         serializeJson(payload_doc, payload);
         ESP_LOGI(TAG, "Sending payload: %s", payload.c_str());
 
-        m_http_client.begin(API_ENDPOINT);
+        m_http_client.begin(config::api::ENDPOINT);
         m_http_client.addHeader("Content-Type", "application/json");
-        m_http_client.addHeader("X-AIO-Key", AIO_KEY);
-        m_http_client.setTimeout(API_TIMEOUT);
+        m_http_client.addHeader("X-AIO-Key", config::adafruit_io::KEY);
+        m_http_client.setTimeout(config::api::TIMEOUT_MS);
 
         int retries = 0;
         int httpCode;

@@ -12,7 +12,7 @@ namespace pooaway::sensors
     }
 
     SensorManager::SensorManager()
-        : m_nh3_sensor(std::make_unique<NH3Sensor>(PEE_SENSOR_PIN)), m_ch4_sensor(std::make_unique<CH4Sensor>(POO_SENSOR_PIN))
+        : m_nh3_sensor(std::make_unique<NH3Sensor>(config::hardware::PEE_SENSOR_PIN)), m_ch4_sensor(std::make_unique<CH4Sensor>(config::hardware::POO_SENSOR_PIN))
     {
         m_preferences.begin("pooaway", false);
 

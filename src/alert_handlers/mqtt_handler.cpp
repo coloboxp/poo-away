@@ -25,7 +25,7 @@ namespace pooaway::alert
             return;
         }
 
-        m_mqtt_client.setServer(MQTT_BROKER, MQTT_PORT);
+        m_mqtt_client.setServer(config::mqtt::BROKER, config::mqtt::PORT);
 
         if (connect())
         {

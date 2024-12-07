@@ -15,7 +15,7 @@ namespace pooaway::alert
     void BuzzerHandler::init()
     {
         ESP_LOGI(TAG, "Initializing buzzer handler");
-        pinMode(BUZZER_PIN, OUTPUT);
+        pinMode(config::hardware::BUZZER_PIN, OUTPUT);
         m_available = true;
         if (m_rate_limit_ms > 0)
         {
@@ -56,7 +56,7 @@ namespace pooaway::alert
 
     void BuzzerHandler::play_tone(int frequency_hz, int duration_ms)
     {
-        tone(BUZZER_PIN, frequency_hz, duration_ms);
+        tone(config::hardware::BUZZER_PIN, frequency_hz, duration_ms);
     }
 
 } // namespace pooaway::alert

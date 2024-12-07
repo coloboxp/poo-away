@@ -44,7 +44,7 @@ namespace pooaway::alert
     {
         const unsigned long now = millis();
 
-        if (now - m_last_alert < ALERT_INTERVAL)
+        if (now - m_last_alert < config::alerts::ALERT_INTERVAL)
         {
             return;
         }
