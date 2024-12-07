@@ -6,11 +6,18 @@
 namespace pooaway::alert
 {
 
+    BuzzerHandler::BuzzerHandler(unsigned long rate_limit_ms)
+        : m_rate_limit_ms(rate_limit_ms) {}
+
     void BuzzerHandler::init()
     {
         ESP_LOGI(TAG, "Initializing buzzer handler");
         pinMode(BUZZER_PIN, OUTPUT);
         m_available = true;
+        if (m_rate_limit_ms > 0)
+        {
+            ESP_LOGI(TAG, "Rate limiting enabled: %lu ms", m_rate_limit_ms);
+        }
     }
 
     void BuzzerHandler::handle_alert(JsonDocument &alert_data)
@@ -18,23 +25,28 @@ namespace pooaway::alert
         if (!m_available)
             return;
 
-        const unsigned long now = millis();
-
-        if (now - m_last_alert < ALERT_INTERVAL)
+        // Check rate limiting
+        if (m_rate_limit_ms > 0)
         {
-            return;
+            unsigned long now = millis();
+            if (now - m_last_request < m_rate_limit_ms)
+            {
+                return;
+            }
+            m_last_request = now;
         }
 
-        JsonArray sensors = alert_data["sensors"].as<JsonArray>();
-        for (const JsonObject &sensor : sensors)
+        auto sensors = alert_data["sensors"].as<JsonArray>();
+
+        for (JsonObject sensor : sensors)
         {
             if (sensor["alert"].as<bool>())
             {
-                int base_freq = 1000;
-                int freq_offset = sensor["index"].as<int>() * 500;
+                // Different tones for different sensors
+                int base_freq = 2000;
+                int freq_offset = sensor["index"].as<int>() * 200;
                 play_tone(base_freq + freq_offset, 100);
-                m_last_alert = now;
-                return;
+                return; // Play only one tone even if multiple alerts
             }
         }
     }

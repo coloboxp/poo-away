@@ -6,8 +6,6 @@ namespace pooaway::sensors
 {
 
     static constexpr char const *TAG = "BaseSensor";
-    static constexpr int ERROR_THRESHOLD = 10;
-    static constexpr float MAX_VOLTAGE_DELTA = 0.5F;
 
     BaseSensor::BaseSensor(const char *model, const char *name, int pin,
                            float alpha, float tolerance, float preheating_time,
@@ -33,12 +31,10 @@ namespace pooaway::sensors
 
         for (int i = 0; i < NUM_READINGS; i++)
         {
-            const float adc_value = static_cast<float>(analogRead(m_pin));
-            const float voltage = adc_value * (VCC / static_cast<float>(ADC_RESOLUTION));
-
-            if (voltage > 0.001F)
+            const float raw_value = read_raw();
+            if (validate_reading(raw_value))
             {
-                const float rs = calculate_rs(voltage);
+                const float rs = calculate_rs(raw_value);
                 sum += rs;
                 valid_readings++;
             }
@@ -55,7 +51,7 @@ namespace pooaway::sensors
         else
         {
             ESP_LOGE(TAG, "Calibration failed for %s", m_name);
-            m_r0 = RL;
+            log_error("Failed to calibrate sensor");
         }
     }
 
@@ -66,49 +62,57 @@ namespace pooaway::sensors
             exit_low_power();
         }
 
-        const float adc_value = static_cast<float>(analogRead(m_pin));
-        const float voltage = adc_value * (VCC / static_cast<float>(ADC_RESOLUTION));
-
-        if (!validate_reading(voltage))
+        const float raw_value = read_raw();
+        if (!validate_reading(raw_value))
         {
             log_error("Invalid reading detected");
             return m_value;
         }
 
-        const float ppm = calculate_ppm(voltage);
-        update_baseline(ppm);
-        update_diagnostics(voltage, ppm);
-        m_value = ppm;
+        const float ppm = calculate_ppm(raw_value);
+        if (is_valid_ppm(ppm))
+        {
+            update_baseline(ppm);
+            update_diagnostics(raw_value, ppm);
+            m_value = ppm;
+        }
 
-        return ppm;
+        return m_value;
     }
 
-    bool BaseSensor::check_alert()
+    float BaseSensor::read_raw()
     {
-        if (m_first_reading || !m_value || !m_alerts_enabled)
+        const float adc_value = static_cast<float>(analogRead(m_pin));
+        ESP_LOGV(TAG, "[%s] ADC value: %f", m_name, adc_value);
+        return adc_value;
+    }
+
+    bool BaseSensor::check_alert() const
+    {
+        if (!m_alerts_enabled || m_first_reading)
         {
             return false;
         }
 
-        const float ratio = m_value / m_baseline_ema;
-        const bool threshold_exceeded = ratio > (1.0F + m_tolerance);
+        const float delta = std::abs(m_value - m_baseline_ema);
+        const float threshold = m_baseline_ema * m_tolerance;
 
-        if (threshold_exceeded)
+        if (delta > threshold)
         {
-            if (m_detect_start == 0UL)
+            if (m_detect_start == 0)
             {
                 m_detect_start = millis();
-                return false;
             }
-            const bool alert_triggered = (millis() - m_detect_start) >= m_min_detect_ms;
-            if (alert_triggered)
+            else if ((millis() - m_detect_start) >= m_min_detect_ms)
             {
-                m_diagnostics.alert_count++;
+                return true;
             }
-            return alert_triggered;
+        }
+        else
+        {
+            m_detect_start = 0;
         }
 
-        m_detect_start = 0UL;
         return false;
     }
 
@@ -123,6 +127,13 @@ namespace pooaway::sensors
 
     void BaseSensor::update_baseline(float new_value)
     {
+        // Protect against invalid values
+        if (std::isinf(new_value) || std::isnan(new_value))
+        {
+            ESP_LOGW(TAG, "Invalid value for baseline update: %f", m_name, new_value);
+            return;
+        }
+
         if (m_first_reading)
         {
             m_baseline_ema = new_value;
@@ -199,39 +210,81 @@ namespace pooaway::sensors
     {
         m_diagnostics.error_count++;
         m_diagnostics.is_healthy = (m_diagnostics.error_count < ERROR_THRESHOLD);
-        ESP_LOGE(TAG, "[%s] %s (errors: %lu)", m_name, message,
-                 m_diagnostics.error_count);
+        ESP_LOGE(TAG, "[%s] %s (errors: %lu)", m_name, message, m_diagnostics.error_count);
     }
 
     bool BaseSensor::validate_reading(float value) const
     {
-        if (value <= 0.0F || value >= VCC)
+        // For pee sensor, we expect very low voltages (0.0-0.1V) in normal conditions
+        // Adjust validation thresholds accordingly
+        constexpr float MIN_VALID_VOLTAGE = 0.0F;
+        constexpr float MAX_VALID_VOLTAGE = 2.0F; // Increased from VCC to handle the ~1.9V readings we're seeing
+
+        if (value < MIN_VALID_VOLTAGE || value > MAX_VALID_VOLTAGE)
         {
+            ESP_LOGW(TAG, "Voltage out of range: %f", m_name, value);
             return false;
         }
 
-        if (!m_first_reading &&
-            std::abs(value - m_diagnostics.last_voltage) > MAX_VOLTAGE_DELTA)
+        // Only check voltage delta if we have a previous reading and it's not the first reading
+        if (!m_first_reading && m_diagnostics.last_voltage > 0.001F)
         {
-            return false;
+            const float delta = std::abs(value - m_diagnostics.last_voltage);
+            if (delta > MAX_VOLTAGE_DELTA)
+            {
+                ESP_LOGW(TAG, "Voltage delta too high: %f (previous: %f, current: %f)",
+                         m_name, delta, m_diagnostics.last_voltage, value);
+                return false;
+            }
         }
 
         return true;
     }
 
+    float BaseSensor::calculate_ppm(float voltage) const
+    {
+        const float rs = calculate_rs(voltage);
+        const float rs_r0_ratio = rs / m_r0;
+
+        // Prevent infinite/invalid PPM values
+        if (rs_r0_ratio <= 0.0F)
+        {
+            return m_value; // Return last valid reading
+        }
+
+        return m_coeff_a * std::exp(m_coeff_b * rs_r0_ratio);
+    }
+
     void BaseSensor::update_diagnostics(float raw_value, float processed_value)
     {
-        m_diagnostics.read_count++;
-        m_diagnostics.last_voltage = raw_value;
-        m_diagnostics.last_resistance = calculate_rs(raw_value);
-        m_diagnostics.last_read_time = millis();
+        // Only update diagnostics with valid values
+        if (!std::isinf(processed_value) && !std::isnan(processed_value))
+        {
+            m_diagnostics.read_count++;
+            m_diagnostics.last_voltage = raw_value;
+            m_diagnostics.last_resistance = calculate_rs(raw_value);
+            m_diagnostics.last_read_time = millis();
 
-        m_diagnostics.min_value = std::min(m_diagnostics.min_value, processed_value);
-        m_diagnostics.max_value = std::max(m_diagnostics.max_value, processed_value);
-        m_diagnostics.avg_value = ((m_diagnostics.avg_value *
-                                    (m_diagnostics.read_count - 1)) +
-                                   processed_value) /
-                                  m_diagnostics.read_count;
+            m_diagnostics.min_value = std::min(m_diagnostics.min_value, processed_value);
+            m_diagnostics.max_value = std::max(m_diagnostics.max_value, processed_value);
+
+            // Update average only with valid readings
+            m_diagnostics.avg_value = ((m_diagnostics.avg_value *
+                                        (m_diagnostics.read_count - 1)) +
+                                       processed_value) /
+                                      m_diagnostics.read_count;
+        }
+
+        ESP_LOGV(TAG, "Diagnostics: %d Last: %f %f Time: %lu Min: %f Max: %f Avg: %f Errors: %lu",
+                 m_name,
+                 m_diagnostics.read_count,
+                 m_diagnostics.last_voltage,
+                 m_diagnostics.last_resistance,
+                 m_diagnostics.last_read_time,
+                 m_diagnostics.min_value,
+                 m_diagnostics.max_value,
+                 m_diagnostics.avg_value,
+                 m_diagnostics.error_count);
     }
 
 } // namespace pooaway::sensors

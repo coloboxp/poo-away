@@ -6,7 +6,8 @@
 namespace pooaway::alert
 {
 
-    MqttHandler::MqttHandler() : m_mqtt_client(m_wifi_client)
+    MqttHandler::MqttHandler(unsigned long rate_limit_ms)
+        : m_rate_limit_ms(rate_limit_ms), m_mqtt_client(m_wifi_client)
     {
         m_mqtt_client.setBufferSize(512);
     }
@@ -15,32 +16,23 @@ namespace pooaway::alert
     {
         ESP_LOGI(TAG, "Initializing MQTT handler");
 
-        // Connect to WiFi
-        ESP_LOGI(TAG, "Connecting to WiFi...");
-        WiFi.begin(WIFI_SSID, WIFI_PASS);
-
-        int retries = 0;
-        while (WiFi.status() != WL_CONNECTED && retries < MAX_RETRIES)
-        {
-            delay(RETRY_DELAY_MS);
-            ESP_LOGI(TAG, ".");
-            retries++;
-        }
-
         if (WiFi.status() != WL_CONNECTED)
         {
-            m_last_error = "Failed to connect to WiFi";
+            m_last_error = "WiFi not connected";
             ESP_LOGE(TAG, "%s", m_last_error.c_str());
             return;
         }
 
-        ESP_LOGI(TAG, "WiFi connected");
         m_mqtt_client.setServer(MQTT_BROKER, MQTT_PORT);
 
         if (connect())
         {
             m_available = true;
             ESP_LOGI(TAG, "MQTT handler initialized");
+            if (m_rate_limit_ms > 0)
+            {
+                ESP_LOGI(TAG, "Rate limiting enabled: %lu ms", m_rate_limit_ms);
+            }
         }
     }
 
@@ -49,32 +41,44 @@ namespace pooaway::alert
         if (!m_available)
             return;
 
+        // Check rate limiting
+        if (m_rate_limit_ms > 0)
+        {
+            unsigned long now = millis();
+            if (now - m_last_request < m_rate_limit_ms)
+            {
+                return;
+            }
+            m_last_request = now;
+        }
+
         if (!m_mqtt_client.connected() && !connect())
         {
             return;
         }
 
-        JsonArray sensors = alert_data["sensors"].as<JsonArray>();
+        // Create payload document
+        JsonDocument payload_doc;
+        
+        // Copy sensor data from alert_data
+        auto sensors = alert_data["sensors"].as<JsonArray>();
         for (JsonObject sensor : sensors)
         {
-            char topic[64];
-            snprintf(topic, sizeof(topic), "pooaway/alerts/%d", sensor["index"].as<int>());
+            const int sensor_index = sensor["index"].as<int>();
+            String topic = String(MQTT_FEED_PREFIX) + "/sensors/" + String(sensor_index);
             
-            // Create a smaller JSON document for MQTT
-            JsonDocument mqtt_doc;
-            mqtt_doc["sensor"] = sensor["name"];
-            mqtt_doc["model"] = sensor["model"];
-            mqtt_doc["alert"] = sensor["alert"];
-            mqtt_doc["value"] = sensor["readings"]["value"];
+            // Create sensor payload
+            JsonObject sensor_payload = payload_doc.to<JsonObject>();
+            sensor_payload["sensor"] = sensor["name"];
+            sensor_payload["alert"] = sensor["alert"];
+            sensor_payload["value"] = sensor["readings"]["value"];
+            sensor_payload["baseline"] = sensor["readings"]["baseline"];
             
+            // Serialize and publish
             String payload;
-            serializeJson(mqtt_doc, payload);
-            
-            if (!m_mqtt_client.publish(topic, payload.c_str()))
-            {
-                ESP_LOGW(TAG, "Failed to publish MQTT message for sensor %d", 
-                         sensor["index"].as<int>());
-            }
+            serializeJson(sensor_payload, payload);
+            m_mqtt_client.publish(topic.c_str(), payload.c_str());
+            ESP_LOGI(TAG, "Published to %s: %s", topic.c_str(), payload.c_str());
         }
         
         m_mqtt_client.loop();
@@ -82,23 +86,18 @@ namespace pooaway::alert
 
     bool MqttHandler::connect()
     {
-        if (m_mqtt_client.connected())
-        {
-            return true;
-        }
-
-        ESP_LOGI(TAG, "Connecting to MQTT broker...");
-
         int retries = 0;
         while (!m_mqtt_client.connected() && retries < MAX_RETRIES)
         {
+            ESP_LOGI(TAG, "Attempting MQTT connection...");
+            
             if (m_mqtt_client.connect(MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD))
             {
                 ESP_LOGI(TAG, "Connected to MQTT broker");
                 return true;
             }
-
-            ESP_LOGW(TAG, "Failed to connect to MQTT broker, retrying...");
+            
+            ESP_LOGW(TAG, "Failed to connect to MQTT, rc=%d", m_mqtt_client.state());
             delay(RETRY_DELAY_MS);
             retries++;
         }
@@ -106,26 +105,6 @@ namespace pooaway::alert
         m_last_error = "Failed to connect to MQTT broker";
         ESP_LOGE(TAG, "%s", m_last_error.c_str());
         return false;
-    }
-
-    bool MqttHandler::publish_alert(int sensor_index, bool alert_state)
-    {
-        char topic[64];
-        char payload[128];
-
-        snprintf(topic, sizeof(topic), "pooaway/alerts/%d", sensor_index);
-        snprintf(payload, sizeof(payload), "{\"sensor\":\"%s\",\"alert\":%s}",
-                 ::sensors[sensor_index].name,
-                 alert_state ? "true" : "false");
-
-        if (!m_mqtt_client.publish(topic, payload))
-        {
-            m_last_error = "Failed to publish MQTT message";
-            ESP_LOGE(TAG, "%s", m_last_error.c_str());
-            return false;
-        }
-
-        return true;
     }
 
 } // namespace pooaway::alert

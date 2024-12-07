@@ -8,6 +8,7 @@
 #include "alert_manager.h"
 #include "debug_manager.h"
 #include "config.h"
+#include "alert_handlers/api_handler.h"
 #include "alert_handlers/buzzer_handler.h"
 #include "alert_handlers/led_handler.h"
 #include "alert_handlers/mqtt_handler.h"
@@ -16,6 +17,12 @@ using namespace pooaway::alert;
 using namespace pooaway::sensors;
 
 static constexpr char const *TAG = "Main";
+
+// Initialize alert handlers with rate limits
+static ApiHandler api_handler(API_RATE_LIMIT_MS);
+static MqttHandler mqtt_handler(MQTT_RATE_LIMIT_MS);
+static LedHandler led_handler(LED_RATE_LIMIT_MS);
+static BuzzerHandler buzzer_handler(BUZZER_RATE_LIMIT_MS);
 
 void setup()
 {

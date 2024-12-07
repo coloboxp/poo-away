@@ -12,14 +12,11 @@ namespace pooaway::sensors
     }
 
     SensorManager::SensorManager()
+        : m_nh3_sensor(std::make_unique<NH3Sensor>(PEE_SENSOR_PIN)), m_ch4_sensor(std::make_unique<CH4Sensor>(POO_SENSOR_PIN))
     {
         m_preferences.begin("pooaway", false);
 
-        // Create sensor instances
-        m_nh3_sensor = std::make_unique<NH3Sensor>(PEE_SENSOR_PIN);
-        m_ch4_sensor = std::make_unique<CH4Sensor>(POO_SENSOR_PIN);
-
-        // Setup sensor array for easy access
+        // Initialize sensor array
         m_sensors[static_cast<size_t>(SensorType::PEE)] = m_nh3_sensor.get();
         m_sensors[static_cast<size_t>(SensorType::POO)] = m_ch4_sensor.get();
     }
@@ -28,7 +25,6 @@ namespace pooaway::sensors
     {
         ESP_LOGI(TAG, "Initializing sensors...");
 
-        // Initialize each sensor
         for (auto *sensor : m_sensors)
         {
             sensor->init();
@@ -37,125 +33,61 @@ namespace pooaway::sensors
             const float saved_r0 = m_preferences.getFloat(sensor->get_name(), 0.0F);
             if (saved_r0 > 0.0F)
             {
-                sensor->set_r0(saved_r0);
                 ESP_LOGI(TAG, "Loaded calibration for %s: R0=%.1f",
                          sensor->get_name(), saved_r0);
+            }
+            else
+            {
+                sensor->calibrate();
             }
         }
     }
 
     void SensorManager::update()
     {
-        if (m_calibration_in_progress)
-        {
-            return;
-        }
-
         for (auto *sensor : m_sensors)
         {
             sensor->read();
         }
     }
 
-    bool SensorManager::needs_calibration() const
-    {
-        for (const auto *sensor : m_sensors)
-        {
-            if (sensor->needs_calibration())
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
     void SensorManager::perform_clean_air_calibration()
     {
-        if (m_calibration_in_progress)
-        {
-            ESP_LOGI(TAG, "Calibration already in progress");
-            return;
-        }
-
-        m_calibration_in_progress = true;
-        digitalWrite(CALIBRATION_LED_PIN, HIGH);
-
         ESP_LOGI(TAG, "Starting clean air calibration...");
 
         for (auto *sensor : m_sensors)
         {
             sensor->calibrate();
+
             // Save calibration to preferences
             m_preferences.putFloat(sensor->get_name(), sensor->get_r0());
         }
 
-        m_calibration_in_progress = false;
-        digitalWrite(CALIBRATION_LED_PIN, LOW);
         ESP_LOGI(TAG, "Calibration complete");
+        run_diagnostics();
     }
 
-    void SensorManager::set_alerts_enabled(SensorType sensor_type, bool enable_state)
+    float SensorManager::get_sensor_value(SensorType type) const
     {
-        if (auto *sensor = get_sensor(sensor_type))
-        {
-            sensor->set_alerts_enabled(enable_state);
-            ESP_LOGI(TAG, "%s alerts %s",
-                     sensor->get_name(),
-                     enable_state ? "enabled" : "disabled");
-        }
+        const auto *sensor = m_sensors[static_cast<size_t>(type)];
+        return sensor ? sensor->get_value() : 0.0F;
     }
 
-    bool SensorManager::get_alert_status(SensorType sensor_type) const
+    bool SensorManager::get_alert_status(SensorType type) const
     {
-        if (const auto *sensor = m_sensors[static_cast<size_t>(sensor_type)])
-        {
-            // Cast away const since check_alert() is no longer const
-            return const_cast<BaseSensor *>(sensor)->check_alert();
-        }
-        return false;
+        const auto *sensor = m_sensors[static_cast<size_t>(type)];
+        return sensor ? sensor->check_alert() : false;
     }
 
-    float SensorManager::get_sensor_value(SensorType sensor_type) const
+    BaseSensor *SensorManager::get_sensor(SensorType type)
     {
-        if (const auto *sensor = m_sensors[static_cast<size_t>(sensor_type)])
-        {
-            return sensor->get_value();
-        }
-        return 0.0F;
-    }
-
-    BaseSensor *SensorManager::get_sensor(SensorType sensor_type)
-    {
-        const auto index = static_cast<size_t>(sensor_type);
-        if (index >= SENSOR_COUNT)
-        {
-            ESP_LOGE(TAG, "Invalid sensor type: %d", static_cast<int>(sensor_type));
-            return nullptr;
-        }
-        return m_sensors[index];
-    }
-
-    void SensorManager::enter_low_power_mode()
-    {
-        ESP_LOGI(TAG, "Entering low power mode for all sensors");
-        for (auto *sensor : m_sensors)
-        {
-            sensor->enter_low_power();
-        }
-    }
-
-    void SensorManager::exit_low_power_mode()
-    {
-        ESP_LOGI(TAG, "Exiting low power mode for all sensors");
-        for (auto *sensor : m_sensors)
-        {
-            sensor->exit_low_power();
-        }
+        return m_sensors[static_cast<size_t>(type)];
     }
 
     void SensorManager::run_diagnostics()
     {
         ESP_LOGI(TAG, "Running diagnostics for all sensors");
+
         for (auto *sensor : m_sensors)
         {
             sensor->run_self_test();
@@ -169,6 +101,18 @@ namespace pooaway::sensors
                      diag.min_value, diag.max_value, diag.avg_value);
             ESP_LOGI(TAG, "  Active time: %lu ms", diag.total_active_time);
         }
+    }
+
+    bool SensorManager::needs_calibration() const
+    {
+        for (const auto *sensor : m_sensors)
+        {
+            if (sensor && sensor->needs_calibration())
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
 } // namespace pooaway::sensors

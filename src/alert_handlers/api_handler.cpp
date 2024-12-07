@@ -6,6 +6,9 @@
 
 namespace pooaway::alert
 {
+    ApiHandler::ApiHandler(unsigned long rate_limit_ms)
+        : m_rate_limit_ms(rate_limit_ms) {}
+
     void ApiHandler::init()
     {
         ESP_LOGI(TAG, "Initializing API handler");
@@ -13,6 +16,10 @@ namespace pooaway::alert
         {
             m_available = true;
             ESP_LOGI(TAG, "API handler initialized");
+            if (m_rate_limit_ms > 0)
+            {
+                ESP_LOGI(TAG, "Rate limiting enabled: %lu ms", m_rate_limit_ms);
+            }
         }
         else
         {
@@ -25,6 +32,18 @@ namespace pooaway::alert
     {
         if (!m_available)
             return;
+
+        // Check rate limiting
+        if (m_rate_limit_ms > 0)
+        {
+            unsigned long now = millis();
+            if (now - m_last_request < m_rate_limit_ms)
+            {
+                ESP_LOGD(TAG, "Rate limited, skipping request");
+                return;
+            }
+            m_last_request = now;
+        }
 
         if (WiFi.status() != WL_CONNECTED)
         {
