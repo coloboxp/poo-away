@@ -7,7 +7,10 @@ namespace pooaway::alert
 {
 
     BuzzerHandler::BuzzerHandler(unsigned long rate_limit_ms)
-        : m_rate_limit_ms(rate_limit_ms) {}
+        : m_rate_limit_ms(rate_limit_ms)
+    {
+        m_type = HandlerType::ALERT_ONLY; // Buzzer only needs alerts
+    }
 
     void BuzzerHandler::init()
     {

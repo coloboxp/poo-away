@@ -57,11 +57,15 @@ namespace pooaway::sensors
         bool check_alert() const override;
         const char *get_name() const override { return m_name; }
 
+        // Sensor reading getters
+        virtual float get_voltage() const { return 0.0f; } // Default implementation
+        virtual float get_rs() const { return 0.0f; }      // Default implementation
+        float get_r0() const { return m_r0; }              // Concrete implementation
+
         // ICalibration interface
         void calibrate() override;
-        float get_r0() const override { return m_r0; }
-        virtual bool validate_r0(float r0) const override = 0;
-        virtual void set_r0(float r0) override = 0;
+        void set_r0(float r0) override { m_r0 = r0; }
+        bool validate_r0(float r0) const override = 0;
         void run_self_test() override;
 
         // ISensorReading interface

@@ -2,6 +2,7 @@
 #include "esp_log.h"
 #include "config.h"
 #include "sensors.h"
+#include "sensor_manager.h"
 #include <algorithm>
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -56,26 +57,32 @@ namespace pooaway::alert
 
         auto sensors_array = doc["sensors"].to<JsonArray>();
 
+        // Add all sensors regardless of alert status
         for (size_t i = 0; i < pooaway::sensors::SENSOR_COUNT; i++)
         {
-            if (alerts[i])
-            {
-                auto sensor = sensors_array.add<JsonObject>();
-                sensor["index"] = i;
-                sensor["name"] = ::sensors[i].name;
-                sensor["model"] = ::sensors[i].model;
-                sensor["alert"] = alerts[i];
+            auto sensor = sensors_array.add<JsonObject>();
+            sensor["index"] = i;
+            sensor["name"] = ::sensors[i].name;
+            sensor["model"] = ::sensors[i].model;
+            sensor["alert"] = alerts[i];
 
-                auto readings = sensor["readings"].to<JsonObject>();
-                readings["value"] = ::sensors[i].value;
-                readings["baseline"] = ::sensors[i].baselineEMA;
-                readings["r0"] = ::sensors[i].cal.r0;
+            // Get sensor instance from SensorManager
+            auto *sensor_ptr = pooaway::sensors::SensorManager::instance().get_sensor(static_cast<pooaway::sensors::SensorType>(i));
+            if (!sensor_ptr)
+                continue;
 
-                auto calibration = sensor["calibration"].to<JsonObject>();
-                calibration["preheating_time"] = ::sensors[i].cal.preheatingTime;
-                calibration["a"] = ::sensors[i].cal.a;
-                calibration["b"] = ::sensors[i].cal.b;
-            }
+            auto readings = sensor["readings"].to<JsonObject>();
+            readings["value"] = ::sensors[i].value;                          // PPM value from global array
+            readings["baseline"] = ::sensors[i].baselineEMA;                 // Baseline from global array
+            readings["voltage"] = sensor_ptr->get_voltage();                 // Get voltage from sensor instance
+            readings["rs"] = sensor_ptr->get_rs();                           // Get Rs from sensor instance
+            readings["r0"] = sensor_ptr->get_r0();                           // Get R0 from sensor instance
+            readings["ratio"] = sensor_ptr->get_rs() / sensor_ptr->get_r0(); // Calculate ratio
+
+            auto calibration = sensor["calibration"].to<JsonObject>();
+            calibration["preheating_time"] = ::sensors[i].cal.preheatingTime;
+            calibration["a"] = ::sensors[i].cal.a;
+            calibration["b"] = ::sensors[i].cal.b;
         }
 
         for (auto handler : m_handlers)

@@ -33,5 +33,7 @@ namespace pooaway::sensors
                          1.2894F) // coeff b
         {
         }
+        float get_voltage() const override;
+        float get_rs() const override;
     };
 }

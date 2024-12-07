@@ -31,13 +31,13 @@ constexpr int CALIBRATION_LED_PIN = LED_PIN;
 // ADC Configuration
 constexpr float VCC = 3.3F;          // Operating voltage
 constexpr int ADC_RESOLUTION = 4096; // 12-bit ADC
-constexpr float RL = 10000.0F;      // Load resistance in kΩ
+constexpr float RL = 10000.0F;       // Load resistance in kΩ
 
 // Button Configuration
 constexpr unsigned long DEBOUNCE_DELAY = 50;
 
 // API Configuration
-constexpr char const *API_ENDPOINT = API_PATH "/feeds/data/data";
+constexpr char const *API_ENDPOINT = API_PATH;
 constexpr int API_TIMEOUT = 5000; // milliseconds
 
 // MQTT Configuration
@@ -52,3 +52,20 @@ constexpr unsigned long BUZZER_RATE_LIMIT_MS = 1000; // 1 second between buzzer 
 
 // Alert Configuration
 constexpr unsigned long ALERT_INTERVAL = 1000; // milliseconds
+
+// Consider using namespaces for configuration
+namespace config
+{
+    namespace wifi
+    {
+        // WiFi configs
+    }
+    namespace mqtt
+    {
+        // MQTT configs
+    }
+    namespace sensors
+    {
+        // Sensor configs
+    }
+}

@@ -60,7 +60,9 @@ namespace pooaway::sensors
 
     float BaseSensor::read_raw() const
     {
-        return static_cast<float>(analogRead(m_pin));
+        const float raw_value = static_cast<float>(analogRead(m_pin));
+        ESP_LOGD(TAG, "Raw value from %s sensor: %.2f", m_name, raw_value);
+        return raw_value;
     }
 
     void BaseSensor::calibrate()

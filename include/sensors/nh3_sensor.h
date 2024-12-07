@@ -33,5 +33,8 @@ namespace pooaway::sensors
                          -2.473F) // coeff b (calibrated for NH3 curve)
         {
         }
+
+        float get_voltage() const override;
+        float get_rs() const override;
     };
 } // namespace pooaway::sensors

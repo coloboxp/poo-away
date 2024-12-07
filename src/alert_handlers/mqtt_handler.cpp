@@ -10,6 +10,7 @@ namespace pooaway::alert
     MqttHandler::MqttHandler(unsigned long rate_limit_ms)
         : m_rate_limit_ms(rate_limit_ms), m_mqtt_client(m_wifi_client)
     {
+        m_type = HandlerType::DATA_PUBLISHER; // MQTT publishes all data
         m_mqtt_client.setBufferSize(512);
     }
 
@@ -48,6 +49,7 @@ namespace pooaway::alert
             unsigned long now = millis();
             if (now - m_last_request < m_rate_limit_ms)
             {
+                ESP_LOGD(TAG, "Rate limited, skipping publish");
                 return;
             }
             m_last_request = now;
@@ -67,28 +69,50 @@ namespace pooaway::alert
             return;
         }
 
-        // Create payload document
-        JsonDocument payload_doc;
-
-        // Copy sensor data from alert_data
+        // Process all sensors regardless of alert status
         auto sensors = alert_data["sensors"].as<JsonArray>();
         for (JsonObject sensor : sensors)
         {
-            const int sensor_index = sensor["index"].as<int>();
-            String topic = String(MQTT_FEED_PREFIX) + "/sensors/" + String(sensor_index);
+            String sensor_name = sensor["name"].as<const char *>();
+            sensor_name.toLowerCase(); // Convert to lowercase for consistent naming
 
-            // Create sensor payload
-            JsonObject sensor_payload = payload_doc.to<JsonObject>();
-            sensor_payload["sensor"] = sensor["name"];
-            sensor_payload["alert"] = sensor["alert"];
-            sensor_payload["value"] = sensor["readings"]["value"];
-            sensor_payload["baseline"] = sensor["readings"]["baseline"];
+            String topic = String(MQTT_FEED_PREFIX) + "/sensors/" + sensor_name;
 
-            // Serialize and publish
-            String payload;
-            serializeJson(sensor_payload, payload);
-            m_mqtt_client.publish(topic.c_str(), payload.c_str());
-            ESP_LOGI(TAG, "Published to %s: %s", topic.c_str(), payload.c_str());
+            // Create a new payload document for each sensor
+            JsonDocument payload_doc;
+
+            // Basic info
+            payload_doc["sensor"] = sensor["name"].as<const char *>();
+            payload_doc["model"] = sensor["model"].as<const char *>();
+
+            // Readings
+            const auto readings = sensor["readings"].as<JsonObject>();
+            payload_doc["ppm"] = readings["value"].as<float>();
+            payload_doc["baseline_ppm"] = readings["baseline"].as<float>();
+            payload_doc["voltage"] = readings["voltage"].as<float>();
+            payload_doc["rs"] = readings["rs"].as<float>();
+            payload_doc["r0"] = readings["r0"].as<float>();
+            payload_doc["ratio"] = readings["ratio"].as<float>();
+            payload_doc["alert"] = sensor["alert"].as<bool>();
+
+            // Calibration data
+            const auto cal = sensor["calibration"].as<JsonObject>();
+            payload_doc["preheating_time"] = cal["preheating_time"].as<int>();
+            payload_doc["cal_a"] = cal["a"].as<float>();
+            payload_doc["cal_b"] = cal["b"].as<float>();
+
+            // Use buffer for more efficient publishing
+            char buffer[1024];
+            size_t n = serializeJson(payload_doc, buffer);
+
+            if (m_mqtt_client.publish(topic.c_str(), buffer, n))
+            {
+                ESP_LOGI(TAG, "Published to %s: %s", topic.c_str(), buffer);
+            }
+            else
+            {
+                ESP_LOGE(TAG, "Failed to publish to %s", topic.c_str());
+            }
         }
 
         m_mqtt_client.loop();

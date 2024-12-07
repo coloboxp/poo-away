@@ -7,7 +7,10 @@
 namespace pooaway::alert
 {
     ApiHandler::ApiHandler(unsigned long rate_limit_ms)
-        : m_rate_limit_ms(rate_limit_ms) {}
+        : m_rate_limit_ms(rate_limit_ms)
+    {
+        m_type = HandlerType::DATA_PUBLISHER;
+    }
 
     void ApiHandler::init()
     {
@@ -56,51 +59,71 @@ namespace pooaway::alert
         JsonDocument payload_doc;
         auto feeds = payload_doc["feeds"].to<JsonArray>();
 
-        // Add each sensor reading and threshold as separate feeds
+        // Process all sensors regardless of alert status
         auto sensors = alert_data["sensors"].as<JsonArray>();
+
+        // Debug log the input data
+        ESP_LOGD(TAG, "Processing sensor data:");
         for (JsonObject sensor : sensors)
         {
-            // Add sensor reading
+            ESP_LOGD(TAG, "Sensor %s: value=%.2f, baseline=%.2f, alert=%d",
+                     sensor["name"].as<const char*>(),
+                     sensor["readings"]["value"].as<float>(),
+                     sensor["readings"]["baseline"].as<float>(),
+                     sensor["alert"].as<bool>());
+        }
+
+        for (JsonObject sensor : sensors)
+        {
+            String sensor_name = sensor["name"].as<const char*>();
+            sensor_name.toLowerCase(); // Convert to lowercase for consistent naming
+            
+            const auto readings = sensor["readings"].as<JsonObject>();
+            
+            // Add all sensor readings
+            const std::pair<const char*, float> values[] = {
+                {"", readings["value"].as<float>()},                    // Main value
+                {".baseline", readings["baseline"].as<float>()},        // Baseline
+                {".voltage", readings["voltage"].as<float>()},          // Voltage
+                {".rs", readings["rs"].as<float>()},                   // Rs value
+                {".r0", readings["r0"].as<float>()},                   // R0 value
+                {".ratio", readings["ratio"].as<float>()},             // Ratio
+                {".alert", sensor["alert"].as<bool>()}                 // Alert status
+            };
+
+            // Add each reading type to the feeds
+            for (const auto& [suffix, value] : values)
             {
                 auto feed = feeds.add<JsonObject>();
-                switch (sensor["index"].as<int>())
-                {
-                case 0:
-                    feed["key"] = "pooaway.pee";
-                    break;
-                case 1:
-                    feed["key"] = "pooaway.poo";
-                    break;
-                case 2:
-                    feed["key"] = "pooaway.pee2";
-                    break;
-                case 3:
-                    feed["key"] = "pooaway.poo2";
-                    break;
-                }
-                feed["value"] = sensor["readings"]["value"].as<int>();
+                feed["key"] = String("pooaway.") + sensor_name + suffix;
+                feed["value"] = value;
             }
 
-            // Add threshold value
+            // Add calibration data
+            const auto cal = sensor["calibration"].as<JsonObject>();
+            const std::pair<const char*, float> cal_values[] = {
+                {".cal_a", cal["a"].as<float>()},
+                {".cal_b", cal["b"].as<float>()}
+            };
+
+            for (const auto& [suffix, value] : cal_values)
             {
                 auto feed = feeds.add<JsonObject>();
-                switch (sensor["index"].as<int>())
-                {
-                case 0:
-                    feed["key"] = "pooaway.peeth";
-                    break;
-                case 1:
-                    feed["key"] = "pooaway.pooth";
-                    break;
-                case 2:
-                    feed["key"] = "pooaway.peeth2";
-                    break;
-                case 3:
-                    feed["key"] = "pooaway.pooth2";
-                    break;
-                }
-                feed["value"] = sensor["readings"]["threshold"].as<int>();
+                feed["key"] = String("pooaway.") + sensor_name + suffix;
+                feed["value"] = value;
             }
+
+            // Add preheating time separately as it's an integer
+            auto feed = feeds.add<JsonObject>();
+            feed["key"] = String("pooaway.") + sensor_name + ".preheating_time";
+            feed["value"] = cal["preheating_time"].as<int>();
+        }
+
+        // Only proceed if we have feeds to send
+        if (feeds.size() == 0)
+        {
+            ESP_LOGW(TAG, "No valid sensor data to send");
+            return;
         }
 
         String payload;
@@ -121,22 +144,8 @@ namespace pooaway::alert
 
             if (httpCode == HTTP_CODE_OK)
             {
-                // Parse and log the response
                 String response = m_http_client.getString();
                 ESP_LOGI(TAG, "API Response: %s", response.c_str());
-
-                JsonDocument response_doc;
-                DeserializationError error = deserializeJson(response_doc, response);
-
-                if (error)
-                {
-                    ESP_LOGW(TAG, "Failed to parse API response: %s", error.c_str());
-                }
-                else
-                {
-                    ESP_LOGI(TAG, "Data posted successfully");
-                }
-
                 m_http_client.end();
                 return;
             }

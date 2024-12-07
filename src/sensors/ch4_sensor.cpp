@@ -96,4 +96,20 @@ namespace pooaway::sensors
         m_needs_calibration = false;
         ESP_LOGI(TAG, "[%s] Sensor calibrated with R0=%.1f", m_name, m_r0);
     }
+
+    float CH4Sensor::get_voltage() const
+    {
+        // Convert ADC reading to voltage using the last raw reading
+        return (read_raw() * VCC) / ADC_RESOLUTION;
+    }
+
+    float CH4Sensor::get_rs() const
+    {
+        float voltage = get_voltage();
+        if (voltage < 0.001F)
+            return RL * 100.0F; // High resistance indicates clean air
+
+        // Rs = RL * (Vc - Vout) / Vout
+        return calculate_rs(voltage);
+    }
 }
