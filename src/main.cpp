@@ -13,6 +13,7 @@
 #include "alert_handlers/mqtt_handler.h"
 
 using namespace pooaway::alert;
+using namespace pooaway::sensors;
 
 static constexpr char const *TAG = "Main";
 
@@ -22,15 +23,16 @@ void setup()
     Serial.begin(115200);
     ESP_LOGI(TAG, "Starting PooAway sensor system...");
 
-    // Initialize managers
-    SensorManager::instance().init();
-    AlertManager::instance().init();
-    DebugManager::instance().init();
-
     // Initialize GPIO pins
     pinMode(LED_PIN, OUTPUT);
     pinMode(BUZZER_PIN, OUTPUT);
     pinMode(CALIBRATION_BTN_PIN, INPUT_PULLUP);
+    pinMode(CALIBRATION_LED_PIN, OUTPUT);
+
+    // Initialize managers
+    SensorManager::instance().init();
+    AlertManager::instance().init();
+    DebugManager::instance().init();
 
     // Initialize alert handlers
     auto &alert_manager = AlertManager::instance();
@@ -43,8 +45,6 @@ void setup()
     alert_manager.add_handler(&led_handler);
     alert_manager.add_handler(&mqtt_handler);
 
-    alert_manager.init();
-
     // Initial calibration if needed
     if (SensorManager::instance().needs_calibration())
     {
@@ -52,18 +52,22 @@ void setup()
         SensorManager::instance().perform_clean_air_calibration();
     }
 
+    // Run initial diagnostics
+    SensorManager::instance().run_diagnostics();
+
     ESP_LOGI(TAG, "Setup complete!");
 }
 
 void loop()
 {
-    static bool alerts[SENSOR_COUNT] = {false};
-    static bool last_btn_state = HIGH;
+    using pooaway::sensors::SensorType;
+
+    static bool alerts[2] = {false};
+    static bool last_btn_state = true;
     static unsigned long last_debounce = 0;
 
     // Handle calibration button
     const bool current_btn_state = digitalRead(CALIBRATION_BTN_PIN);
-
     if (current_btn_state != last_btn_state)
     {
         last_debounce = millis();
@@ -73,19 +77,37 @@ void loop()
     {
         if (current_btn_state == LOW)
         { // Button pressed (active LOW)
+            ESP_LOGI(TAG, "Calibration button pressed");
             SensorManager::instance().perform_clean_air_calibration();
         }
     }
-
     last_btn_state = current_btn_state;
 
-    // Update sensors and get alerts
-    SensorManager::instance().update();
+    // Update sensors
+    auto &sensor_manager = SensorManager::instance();
+    sensor_manager.update();
 
-    // Handle alerts and debug output
+    // Check for alerts
+    for (size_t i = 0; i < 2; i++)
+    {
+        const auto sensor_type = static_cast<pooaway::sensors::SensorType>(i);
+        alerts[i] = sensor_manager.get_alert_status(sensor_type);
+
+        if (alerts[i])
+        {
+            const auto *sensor = sensor_manager.get_sensor(sensor_type);
+            if (sensor)
+            {
+                ESP_LOGW(TAG, "Alert from %s! Value: %.2f",
+                         sensor->get_name(),
+                         sensor_manager.get_sensor_value(sensor_type));
+            }
+        }
+    }
+
+    // Update alert system
     AlertManager::instance().update(alerts);
-    DebugManager::instance().print_sensor_data();
 
-    // Small delay to prevent overwhelming the system
-    vTaskDelay(pdMS_TO_TICKS(10));
+    // Small delay to prevent tight looping
+    delay(10);
 }

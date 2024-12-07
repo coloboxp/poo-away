@@ -1,249 +1,174 @@
 #include "sensor_manager.h"
 #include "esp_log.h"
-#include <cmath>
+#include "config.h"
 
-SensorManager &SensorManager::instance()
+namespace pooaway::sensors
 {
-    static SensorManager instance;
-    return instance;
-}
 
-SensorManager::SensorManager()
-{
-    m_preferences.begin("pooaway", false);
-}
-
-void SensorManager::init()
-{
-    // Load calibration values from NVS
-    for (int i = 0; i < SENSOR_COUNT; i++)
+    SensorManager &SensorManager::instance()
     {
-        sensors[i].cal.r0 = m_preferences.getFloat(
-            sensors[i].model,
-            sensors[i].cal.r0);
-        ESP_LOGI(TAG, "Loaded R0=%.1f for %s sensor",
-                 sensors[i].cal.r0,
-                 sensors[i].name);
+        static SensorManager instance;
+        return instance;
     }
-}
 
-void SensorManager::update()
-{
-    for (int i = 0; i < SENSOR_COUNT; i++)
+    SensorManager::SensorManager()
     {
-        update_ema(sensors[i]);
+        m_preferences.begin("pooaway", false);
+
+        // Create sensor instances
+        m_nh3_sensor = std::make_unique<NH3Sensor>(PEE_SENSOR_PIN);
+        m_ch4_sensor = std::make_unique<CH4Sensor>(POO_SENSOR_PIN);
+
+        // Setup sensor array for easy access
+        m_sensors[static_cast<size_t>(SensorType::PEE)] = m_nh3_sensor.get();
+        m_sensors[static_cast<size_t>(SensorType::POO)] = m_ch4_sensor.get();
     }
-}
 
-bool SensorManager::needs_calibration() const
-{
-    for (const auto &sensor : sensors)
+    void SensorManager::init()
     {
-        if (sensor.cal.r0 <= 0.0F)
+        ESP_LOGI(TAG, "Initializing sensors...");
+
+        // Initialize each sensor
+        for (auto *sensor : m_sensors)
         {
-            return true;
+            sensor->init();
+
+            // Load calibration from preferences if available
+            const float saved_r0 = m_preferences.getFloat(sensor->get_name(), 0.0F);
+            if (saved_r0 > 0.0F)
+            {
+                sensor->set_r0(saved_r0);
+                ESP_LOGI(TAG, "Loaded calibration for %s: R0=%.1f",
+                         sensor->get_name(), saved_r0);
+            }
         }
     }
-    return false;
-}
 
-void SensorManager::perform_clean_air_calibration()
-{
-    if (m_calibration_in_progress)
+    void SensorManager::update()
     {
-        ESP_LOGI(TAG, "Calibration already in progress");
-        return;
+        if (m_calibration_in_progress)
+        {
+            return;
+        }
+
+        for (auto *sensor : m_sensors)
+        {
+            sensor->read();
+        }
     }
 
-    m_calibration_in_progress = true;
-    digitalWrite(CALIBRATION_LED_PIN, HIGH);
-
-    ESP_LOGI(TAG, "Starting clean air calibration...");
-
-    for (int i = 0; i < SENSOR_COUNT; i++)
+    bool SensorManager::needs_calibration() const
     {
-        calibrate_sensor(static_cast<SensorType>(i));
-    }
-
-    m_calibration_in_progress = false;
-    digitalWrite(CALIBRATION_LED_PIN, LOW);
-}
-
-void SensorManager::calibrate_sensor(SensorType sensor_type)
-{
-    const int sensor_idx = static_cast<int>(sensor_type);
-
-    if (sensor_idx >= SENSOR_COUNT)
-    {
-        ESP_LOGE(TAG, "Invalid sensor type: %d", sensor_idx);
-        return;
-    }
-
-    if (m_calibration_tasks[sensor_idx] != nullptr)
-    {
-        ESP_LOGI(TAG, "Calibration already in progress for %s", sensors[sensor_idx].name);
-        return;
-    }
-
-    xTaskCreate(
-        calibration_task,
-        "calibration_task",
-        2048,
-        &sensors[sensor_idx],
-        1,
-        &m_calibration_tasks[sensor_idx]);
-}
-
-void SensorManager::set_alerts_enabled(SensorType sensor_type, bool enable_state)
-{
-    const int sensor_idx = static_cast<int>(sensor_type);
-
-    if (sensor_idx >= SENSOR_COUNT)
-    {
-        ESP_LOGE(TAG, "Invalid sensor type: %d", sensor_idx);
-        return;
-    }
-
-    sensors[sensor_idx].alertsEnabled = enable_state;
-    ESP_LOGI(TAG, "%s alerts %s",
-             sensors[sensor_idx].name,
-             enable_state ? "enabled" : "disabled");
-}
-
-bool SensorManager::get_alert_status(SensorType sensor_type) const
-{
-    const int sensor_idx = static_cast<int>(sensor_type);
-    return (sensor_idx < SENSOR_COUNT) ? check_threshold(sensors[sensor_idx]) : false;
-}
-
-float SensorManager::get_sensor_value(SensorType sensor_type) const
-{
-    const int sensor_idx = static_cast<int>(sensor_type);
-    return (sensor_idx < SENSOR_COUNT) ? sensors[sensor_idx].value : 0.0F;
-}
-
-// Private methods implementation
-float SensorManager::calculate_rs(float voltage_v) const
-{
-    if (voltage_v < 0.001F)
-    {
-        voltage_v = 0.001F; // Prevent division by zero
-    }
-    return RL * ((VCC / voltage_v) - 1.0F);
-}
-
-float SensorManager::convert_to_ppm(const SensorData &sensor_data, float rs_r0_ratio) const
-{
-    return sensor_data.cal.a * std::exp(sensor_data.cal.b * rs_r0_ratio);
-}
-
-float SensorManager::read_sensor(SensorData &sensor_data)
-{
-    const float adc_value = static_cast<float>(analogRead(sensor_data.pin));
-    const float vout = adc_value * (VCC / static_cast<float>(ADC_RESOLUTION));
-    const float rs = vout > 0.0F ? calculate_rs(vout) : sensor_data.value;
-    const float rs_r0 = sensor_data.cal.r0 > 0.0F ? rs / sensor_data.cal.r0 : 1.0F;
-    const float ppm = convert_to_ppm(sensor_data, rs_r0);
-
-    if (DEBUG_SENSORS)
-    {
-        ESP_LOGI(TAG, "%s: ADC=%.0f, Vout=%.3f, Rs=%.3f, Rs/R0=%.3f, PPM=%.1f",
-                 sensor_data.name, adc_value, vout, rs, rs_r0, ppm);
-    }
-
-    return ppm;
-}
-
-void SensorManager::update_ema(SensorData &sensor_data)
-{
-    const float new_value = read_sensor(sensor_data);
-    if (sensor_data.firstReading)
-    {
-        sensor_data.baselineEMA = new_value;
-        sensor_data.firstReading = false;
-    }
-    else
-    {
-        sensor_data.baselineEMA = (sensor_data.alpha * new_value) +
-                                  ((1.0F - sensor_data.alpha) * sensor_data.baselineEMA);
-    }
-    sensor_data.value = new_value;
-}
-
-bool SensorManager::check_threshold(SensorData &sensor_data) const
-{
-    if (!sensor_data.alertsEnabled)
-    {
+        for (const auto *sensor : m_sensors)
+        {
+            if (sensor->needs_calibration())
+            {
+                return true;
+            }
+        }
         return false;
     }
 
-    const float ratio = sensor_data.value / sensor_data.baselineEMA;
-    const bool is_triggered = ratio < (1.0F - sensor_data.tolerance);
-
-    if (is_triggered)
+    void SensorManager::perform_clean_air_calibration()
     {
-        if (sensor_data.detectStart == 0)
+        if (m_calibration_in_progress)
         {
-            sensor_data.detectStart = millis();
-        }
-        return (millis() - sensor_data.detectStart) >=
-               static_cast<unsigned long>(sensor_data.minDetectMs);
-    }
-
-    sensor_data.detectStart = 0;
-    return false;
-}
-
-void SensorManager::calibration_task(void *task_parameters)
-{
-    SensorData *sensor = static_cast<SensorData *>(task_parameters);
-    const int num_readings = sensor->cal.numReadingsForR0;
-    float sum = 0.0F;
-    int valid_readings = 0;
-
-    // Get instance for preferences access
-    static Preferences preferences;
-    preferences.begin("pooaway", false);
-
-    ESP_LOGI(TAG, "Starting calibration for %s sensor", sensor->name);
-    ESP_LOGI(TAG, "Preheating for %.0f seconds...", sensor->cal.preheatingTime);
-
-    vTaskDelay(pdMS_TO_TICKS(static_cast<uint32_t>(sensor->cal.preheatingTime * 1000.0F)));
-
-    for (int i = 0; i < num_readings && valid_readings < num_readings; i++)
-    {
-        const float adc_value = static_cast<float>(analogRead(sensor->pin));
-        const float vout = adc_value * (VCC / static_cast<float>(ADC_RESOLUTION));
-
-        if (vout > 0.0F)
-        {
-            const float rs = RL * ((VCC / vout) - 1.0F);
-            sum += rs;
-            valid_readings++;
-
-            if (DEBUG_SENSORS)
-            {
-                ESP_LOGI(TAG, "Calibration reading %d/%d: ADC=%.0f, Vout=%.3f, Rs=%.0f",
-                         valid_readings, num_readings, adc_value, vout, rs);
-            }
+            ESP_LOGI(TAG, "Calibration already in progress");
+            return;
         }
 
-        vTaskDelay(pdMS_TO_TICKS(100)); // 100ms between readings
+        m_calibration_in_progress = true;
+        digitalWrite(CALIBRATION_LED_PIN, HIGH);
+
+        ESP_LOGI(TAG, "Starting clean air calibration...");
+
+        for (auto *sensor : m_sensors)
+        {
+            sensor->calibrate();
+            // Save calibration to preferences
+            m_preferences.putFloat(sensor->get_name(), sensor->get_r0());
+        }
+
+        m_calibration_in_progress = false;
+        digitalWrite(CALIBRATION_LED_PIN, LOW);
+        ESP_LOGI(TAG, "Calibration complete");
     }
 
-    if (valid_readings > 0)
+    void SensorManager::set_alerts_enabled(SensorType sensor_type, bool enable_state)
     {
-        sensor->cal.r0 = sum / static_cast<float>(valid_readings);
-        preferences.putFloat(sensor->model, sensor->cal.r0);
-        ESP_LOGI(TAG, "Calibration complete for %s sensor. R0=%.1f",
-                 sensor->name, sensor->cal.r0);
-    }
-    else
-    {
-        ESP_LOGE(TAG, "Calibration failed for %s sensor", sensor->name);
-        sensor->cal.r0 = RL; // Use load resistor as fallback
+        if (auto *sensor = get_sensor(sensor_type))
+        {
+            sensor->set_alerts_enabled(enable_state);
+            ESP_LOGI(TAG, "%s alerts %s",
+                     sensor->get_name(),
+                     enable_state ? "enabled" : "disabled");
+        }
     }
 
-    preferences.end(); // Close preferences
-    vTaskDelete(nullptr);
-}
+    bool SensorManager::get_alert_status(SensorType sensor_type) const
+    {
+        if (const auto *sensor = m_sensors[static_cast<size_t>(sensor_type)])
+        {
+            // Cast away const since check_alert() is no longer const
+            return const_cast<BaseSensor *>(sensor)->check_alert();
+        }
+        return false;
+    }
+
+    float SensorManager::get_sensor_value(SensorType sensor_type) const
+    {
+        if (const auto *sensor = m_sensors[static_cast<size_t>(sensor_type)])
+        {
+            return sensor->get_value();
+        }
+        return 0.0F;
+    }
+
+    BaseSensor *SensorManager::get_sensor(SensorType sensor_type)
+    {
+        const auto index = static_cast<size_t>(sensor_type);
+        if (index >= SENSOR_COUNT)
+        {
+            ESP_LOGE(TAG, "Invalid sensor type: %d", static_cast<int>(sensor_type));
+            return nullptr;
+        }
+        return m_sensors[index];
+    }
+
+    void SensorManager::enter_low_power_mode()
+    {
+        ESP_LOGI(TAG, "Entering low power mode for all sensors");
+        for (auto *sensor : m_sensors)
+        {
+            sensor->enter_low_power();
+        }
+    }
+
+    void SensorManager::exit_low_power_mode()
+    {
+        ESP_LOGI(TAG, "Exiting low power mode for all sensors");
+        for (auto *sensor : m_sensors)
+        {
+            sensor->exit_low_power();
+        }
+    }
+
+    void SensorManager::run_diagnostics()
+    {
+        ESP_LOGI(TAG, "Running diagnostics for all sensors");
+        for (auto *sensor : m_sensors)
+        {
+            sensor->run_self_test();
+            const auto &diag = sensor->get_diagnostics();
+
+            ESP_LOGI(TAG, "Sensor %s diagnostics:", sensor->get_name());
+            ESP_LOGI(TAG, "  Health: %s", diag.is_healthy ? "OK" : "FAIL");
+            ESP_LOGI(TAG, "  Readings: %lu (Errors: %lu)",
+                     diag.read_count, diag.error_count);
+            ESP_LOGI(TAG, "  Values - Min: %.2f, Max: %.2f, Avg: %.2f",
+                     diag.min_value, diag.max_value, diag.avg_value);
+            ESP_LOGI(TAG, "  Active time: %lu ms", diag.total_active_time);
+        }
+    }
+
+} // namespace pooaway::sensors

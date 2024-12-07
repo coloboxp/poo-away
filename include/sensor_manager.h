@@ -1,43 +1,51 @@
 #pragma once
-#include "sensors.h"
+#include "sensors/nh3_sensor.h"
+#include "sensors/ch4_sensor.h"
+#include "sensors/sensor_types.h"
 #include <Preferences.h>
+#include <memory>
+#include <array>
 
-class SensorManager
+namespace pooaway::sensors
 {
-public:
-    static SensorManager &instance();
 
-    // Delete copy constructor and assignment operator
-    SensorManager(const SensorManager &) = delete;
-    SensorManager &operator=(const SensorManager &) = delete;
+    class SensorManager
+    {
+    public:
+        static SensorManager &instance();
 
-    // Core functionality
-    void init();
-    void update();
-    bool needs_calibration() const;
-    void perform_clean_air_calibration();
-    void calibrate_sensor(SensorType sensor_type);
-    void set_alerts_enabled(SensorType sensor_type, bool enable_state);
+        // Delete copy constructor and assignment operator
+        SensorManager(const SensorManager &) = delete;
+        SensorManager &operator=(const SensorManager &) = delete;
 
-    // Getters
-    bool get_alert_status(SensorType sensor_type) const;
-    float get_sensor_value(SensorType sensor_type) const;
+        // Core functionality
+        void init();
+        void update();
+        bool needs_calibration() const;
+        void perform_clean_air_calibration();
+        void set_alerts_enabled(SensorType sensor_type, bool enable_state);
+        void enter_low_power_mode();
+        void exit_low_power_mode();
+        void run_diagnostics();
 
-private:
-    SensorManager(); // Private constructor for singleton
+        // Getters
+        bool get_alert_status(SensorType sensor_type) const;
+        float get_sensor_value(SensorType sensor_type) const;
+        BaseSensor *get_sensor(SensorType sensor_type);
 
-    static constexpr char const *TAG = "SensorManager";
-    Preferences m_preferences;
+    private:
+        SensorManager(); // Private constructor for singleton
+        static constexpr char const *TAG = "SensorManager";
+        Preferences m_preferences;
 
-    // Helper methods
-    float calculate_rs(float voltage_v) const;
-    float convert_to_ppm(const SensorData &sensor_data, float rs_r0_ratio) const;
-    float read_sensor(SensorData &sensor_data);
-    void update_ema(SensorData &sensor_data);
-    bool check_threshold(SensorData &sensor_data) const;
-    static void calibration_task(void *task_parameters);
+        // Sensor instances
+        std::unique_ptr<NH3Sensor> m_nh3_sensor;
+        std::unique_ptr<CH4Sensor> m_ch4_sensor;
+        std::array<BaseSensor *, SENSOR_COUNT> m_sensors;
 
-    // Task handles for calibration
-    TaskHandle_t m_calibration_tasks[SENSOR_COUNT]{nullptr};
-    bool m_calibration_in_progress{false};
-};
+        bool m_calibration_in_progress{false};
+        static void calibration_task(void *task_parameters);
+        TaskHandle_t m_calibration_tasks[SENSOR_COUNT]{nullptr};
+    };
+
+} // namespace pooaway::sensors
