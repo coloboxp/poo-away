@@ -3,24 +3,28 @@
 #include "sensors.h"
 #include "alert_handler.h"
 
-class AlertManager
+namespace pooaway::alert
 {
-public:
-    static AlertManager &instance();
 
-    // Delete copy constructor and assignment operator
-    AlertManager(const AlertManager &) = delete;
-    AlertManager &operator=(const AlertManager &) = delete;
+    class AlertManager
+    {
+    public:
+        static AlertManager &instance();
 
-    void init();
-    void update(const bool alerts[SENSOR_COUNT]);
-    void add_handler(AlertHandler *handler);
-    void remove_handler(AlertHandler *handler);
+        AlertManager(const AlertManager &) = delete;
+        AlertManager &operator=(const AlertManager &) = delete;
 
-private:
-    AlertManager(); // Private constructor for singleton
+        void init();
+        void update(const bool alerts[SENSOR_COUNT]);
+        void add_handler(AlertHandler *handler);
+        void remove_handler(AlertHandler *handler);
+        [[nodiscard]] std::vector<std::string> get_handler_errors() const;
 
-    static constexpr char const *TAG = "AlertManager";
-    unsigned long m_last_alert{0};
-    std::vector<AlertHandler *> m_handlers;
-};
+    private:
+        AlertManager();
+        static constexpr char const *TAG = "AlertManager";
+        unsigned long m_last_alert{0};
+        std::vector<AlertHandler *> m_handlers;
+    };
+
+} // namespace pooaway::alert

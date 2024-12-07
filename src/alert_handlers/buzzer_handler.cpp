@@ -2,34 +2,43 @@
 #include "esp_log.h"
 #include "config.h"
 
-void BuzzerHandler::init()
+namespace pooaway::alert
 {
-    ESP_LOGI(TAG, "Initializing buzzer handler");
-    pinMode(BUZZER_PIN, OUTPUT);
-}
 
-void BuzzerHandler::handle_alert(const bool alerts[SENSOR_COUNT])
-{
-    const unsigned long now = millis();
-
-    if (now - m_last_alert < ALERT_INTERVAL)
+    void BuzzerHandler::init()
     {
-        return;
+        ESP_LOGI(TAG, "Initializing buzzer handler");
+        pinMode(BUZZER_PIN, OUTPUT);
+        m_available = true;
     }
 
-    m_last_alert = now;
-
-    for (int i = 0; i < SENSOR_COUNT; i++)
+    void BuzzerHandler::handle_alert(const bool alerts[SENSOR_COUNT])
     {
-        if (alerts[i])
+        if (!m_available)
+            return;
+
+        const unsigned long now = millis();
+
+        if (now - m_last_alert < ALERT_INTERVAL)
         {
-            play_tone(1000 + (i * 500), 100);
             return;
         }
-    }
-}
 
-void BuzzerHandler::play_tone(int frequency_hz, int duration_ms)
-{
-    tone(BUZZER_PIN, frequency_hz, duration_ms);
-}
+        m_last_alert = now;
+
+        for (int i = 0; i < SENSOR_COUNT; i++)
+        {
+            if (alerts[i])
+            {
+                play_tone(1000 + (i * 500), 100);
+                return;
+            }
+        }
+    }
+
+    void BuzzerHandler::play_tone(int frequency_hz, int duration_ms)
+    {
+        tone(BUZZER_PIN, frequency_hz, duration_ms);
+    }
+
+} // namespace pooaway::alert

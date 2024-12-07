@@ -12,6 +12,8 @@
 #include "alert_handlers/led_handler.h"
 #include "alert_handlers/mqtt_handler.h"
 
+using namespace pooaway::alert;
+
 static constexpr char const *TAG = "Main";
 
 void setup()

@@ -2,14 +2,19 @@
 #include "esp_log.h"
 #include "config.h"
 
+namespace pooaway::alert {
+
 void LedHandler::init()
 {
     ESP_LOGI(TAG, "Initializing LED handler");
     pinMode(LED_PIN, OUTPUT);
+    m_available = true;
 }
 
 void LedHandler::handle_alert(const bool alerts[SENSOR_COUNT])
 {
+    if (!m_available) return;
+
     bool any_alert = false;
     for (int i = 0; i < SENSOR_COUNT; i++)
     {
@@ -30,3 +35,5 @@ void LedHandler::handle_alert(const bool alerts[SENSOR_COUNT])
         digitalWrite(LED_PIN, LOW);
     }
 }
+
+} // namespace pooaway::alert
