@@ -53,7 +53,7 @@ void setup()
 
     alert_manager.add_handler(&buzzer_handler);
     alert_manager.add_handler(&led_handler);
-    alert_manager.add_handler(&mqtt_handler);
+    // alert_manager.add_handler(&mqtt_handler);
     alert_manager.add_handler(&api_handler);
 
     // Initial calibration if needed

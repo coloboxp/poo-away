@@ -2,6 +2,8 @@
 #include "alert_handler.h"
 #include <HTTPClient.h>
 #include <WiFi.h>
+#include <string>
+#include <map>
 
 namespace pooaway::alert
 {
@@ -19,5 +21,12 @@ namespace pooaway::alert
         static constexpr int MAX_RETRIES = 3;
         static constexpr int RETRY_DELAY_MS = 1000;
         static constexpr char const *TAG = "ApiHandler";
+        struct ChannelInfo
+        {
+            String write_api_key;
+            String read_api_key;
+            String channel_id;
+        };
+        std::map<String, ChannelInfo> m_channel_info{};
     };
 } // namespace pooaway::alert

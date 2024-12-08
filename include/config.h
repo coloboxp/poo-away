@@ -127,4 +127,46 @@ namespace config
         // System-wide configurations
         constexpr unsigned long TASK_DELAY = 100; // Default task delay in milliseconds
     }
+
+    namespace ntp
+    {
+        constexpr char const *SERVER = "pool.ntp.org";
+        constexpr char const *TIMEZONE = "CET-1CEST,M3.5.0,M10.5.0/3"; // Central European Time (Bratislava)
+        constexpr long GMT_OFFSET_SEC = 3600;                          // GMT+1 for Bratislava
+        constexpr long DAYLIGHT_OFFSET_SEC = 3600;                     // +1 hour for daylight saving
+        constexpr unsigned long SYNC_INTERVAL = 3600000;               // Resync every hour
+    }
+
+    namespace thingspeak
+    {
+        constexpr char const *ENDPOINT = "https://api.thingspeak.com/update";
+
+#ifndef THINGSPEAK_USER_API_KEY
+        constexpr char const *USER_API_KEY = "your_user_api_key";
+#else
+        constexpr char const *USER_API_KEY = THINGSPEAK_USER_API_KEY;
+#endif
+
+#ifndef THINGSPEAK_ALERTS_API_KEY
+        constexpr char const *ALERTS_API_KEY = "your_alerts_api_key";
+#else
+        constexpr char const *ALERTS_API_KEY = THINGSPEAK_ALERTS_API_KEY;
+#endif
+
+#ifndef THINGSPEAK_NH3_API_KEY
+        constexpr char const *NH3_API_KEY = "your_nh3_api_key";
+#else
+        constexpr char const *NH3_API_KEY = THINGSPEAK_NH3_API_KEY;
+#endif
+
+#ifndef THINGSPEAK_CH4_API_KEY
+        constexpr char const *CH4_API_KEY = "your_ch4_api_key";
+#else
+        constexpr char const *CH4_API_KEY = THINGSPEAK_CH4_API_KEY;
+#endif
+
+        constexpr unsigned long UPDATE_INTERVAL_MS = 15000;
+        constexpr int MAX_FIELDS = 8;
+        constexpr bool PUBLIC_FLAG = false;
+    }
 }

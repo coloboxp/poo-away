@@ -1,5 +1,7 @@
 #include "wifi_manager.h"
 #include "config.h"
+#include <time.h>
+#include "esp_sntp.h"
 
 namespace pooaway
 {
@@ -13,7 +15,7 @@ namespace pooaway
     {
         ESP_LOGI(TAG, "Initializing WiFi connection...");
         WiFi.mode(WIFI_STA);
-        return ensure_connected();
+        return ensure_connected() && sync_time();
     }
 
     bool WiFiManager::ensure_connected()
@@ -47,5 +49,41 @@ namespace pooaway
         m_last_error = "Failed to connect to WiFi";
         ESP_LOGE(TAG, "%s", m_last_error.c_str());
         return false;
+    }
+
+    bool WiFiManager::sync_time()
+    {
+        ESP_LOGI(TAG, "Synchronizing time with NTP server...");
+
+        // Configure NTP
+        configTzTime(config::ntp::TIMEZONE, config::ntp::SERVER);
+
+        // Wait for time to be set
+        int retry = 0;
+        const int max_retry = 10;
+        while (time(nullptr) < 1000000000 && retry < max_retry)
+        {
+            ESP_LOGD(TAG, "Waiting for NTP time sync... (%d/%d)", retry + 1, max_retry);
+            delay(500);
+            retry++;
+        }
+
+        if (time(nullptr) < 1000000000)
+        {
+            m_last_error = "Failed to sync time with NTP server";
+            ESP_LOGE(TAG, "%s", m_last_error.c_str());
+            return false;
+        }
+
+        // Log current time
+        struct tm timeinfo;
+        if (getLocalTime(&timeinfo))
+        {
+            char time_str[64];
+            strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S %Z", &timeinfo);
+            ESP_LOGI(TAG, "Time synchronized: %s", time_str);
+        }
+
+        return true;
     }
 }

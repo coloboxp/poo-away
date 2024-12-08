@@ -1,0 +1,18 @@
+#pragma once
+
+#define WIFI_SSID ""
+#define WIFI_PASS ""
+
+#define MQTT_USERNAME ""
+#define MQTT_PASSWORD ""
+#define MQTT_CLIENT_ID ""
+#define MQTT_FEED_PREFIX ""
+
+#define AIO_USERNAME ""
+#define AIO_KEY ""
+#define API_PATH ""
+
+#define THINGSPEAK_NH3_API_KEY ""
+#define THINGSPEAK_CH4_API_KEY ""
+#define THINGSPEAK_USER_API_KEY ""
+#define THINGSPEAK_ALERTS_API_KEY ""
