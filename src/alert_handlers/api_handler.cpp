@@ -217,28 +217,44 @@ namespace pooaway::alert
         // Ensure we end any previous connection
         m_http_client.end();
         
-        // Begin new connection
-        if (!m_http_client.begin(url)) {
+        // Configure secure client
+        m_secure_client.setInsecure(); // For ThingSpeak we can use insecure mode
+        
+        // Begin new connection with retry logic
+        int retries = 3;
+        while (retries > 0) {
+            if (m_http_client.begin(m_secure_client, url)) {
+                m_http_client.addHeader("Content-Type", "application/json");
+                m_http_client.setTimeout(config::api::TIMEOUT_MS);
+                
+                int httpCode = m_http_client.POST(payload);
+                
+                if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_ACCEPTED) {
+                    String response = m_http_client.getString();
+                    ESP_LOGI(TAG, "ThingSpeak Response: %s", response.c_str());
+                    m_http_client.end();
+                    return; // Success, exit function
+                }
+                
+                if (httpCode == -11) { // Timeout
+                    ESP_LOGW(TAG, "HTTP POST timeout, retrying... (%d attempts left)", retries - 1);
+                    retries--;
+                    m_http_client.end();
+                    delay(1000); // Wait before retry
+                    continue;
+                }
+                
+                // Other errors
+                ESP_LOGE(TAG, "HTTP POST failed, code: %d", httpCode);
+                break;
+            }
+            
             ESP_LOGE(TAG, "Failed to begin HTTP client");
-            return;
+            retries--;
+            delay(1000);
         }
 
-        m_http_client.addHeader("Content-Type", "application/json");
-        m_http_client.setTimeout(config::api::TIMEOUT_MS);
-
-        int httpCode = m_http_client.POST(payload);
-
-        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_ACCEPTED)
-        {
-            String response = m_http_client.getString();
-            ESP_LOGV(TAG, "ThingSpeak Response: %s", response.c_str());
-        }
-        else
-        {
-            ESP_LOGE(TAG, "HTTP POST failed, code: %d", httpCode);
-        }
-
-        // Always end the connection
+        // Always ensure connection is closed
         m_http_client.end();
         delay(100); // Give some time for socket cleanup
     }
