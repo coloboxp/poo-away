@@ -50,12 +50,14 @@ namespace pooaway::alert
         }
 
         m_last_alert = now;
+        ESP_LOGV(TAG, "Creating alert data document");
 
         JsonDocument doc;
         doc["device_id"] = WiFi.macAddress();
         doc["timestamp"] = now;
 
         auto sensors_array = doc["sensors"].to<JsonArray>();
+        ESP_LOGV(TAG, "Processing sensors data");
 
         // Add all sensors regardless of alert status
         for (size_t i = 0; i < pooaway::sensors::SENSOR_COUNT; i++)
@@ -85,13 +87,19 @@ namespace pooaway::alert
             calibration["b"] = ::sensors[i].cal.b;
         }
 
+        ESP_LOGV(TAG, "Sending to %d handlers", m_handlers.size());
         for (auto handler : m_handlers)
         {
             try
             {
                 if (handler->is_available())
                 {
+                    ESP_LOGV(TAG, "Calling handler type: %d", static_cast<int>(handler->get_type()));
                     handler->handle_alert(doc);
+                }
+                else
+                {
+                    ESP_LOGW(TAG, "Handler not available, type: %d", static_cast<int>(handler->get_type()));
                 }
             }
             catch (const std::exception &e)

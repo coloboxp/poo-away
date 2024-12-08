@@ -168,5 +168,17 @@ namespace config
         constexpr unsigned long UPDATE_INTERVAL_MS = 15000;
         constexpr int MAX_FIELDS = 8;
         constexpr bool PUBLIC_FLAG = false;
+
+#ifndef THINGSPEAK_NH3_CHANNEL_ID
+        constexpr char const *NH3_CHANNEL_ID = "your_nh3_channel_id";
+#else
+        constexpr char const *NH3_CHANNEL_ID = THINGSPEAK_NH3_CHANNEL_ID;
+#endif
+
+#ifndef THINGSPEAK_CH4_CHANNEL_ID
+        constexpr char const *CH4_CHANNEL_ID = "your_ch4_channel_id";
+#else
+        constexpr char const *CH4_CHANNEL_ID = THINGSPEAK_CH4_CHANNEL_ID;
+#endif
     }
 }
